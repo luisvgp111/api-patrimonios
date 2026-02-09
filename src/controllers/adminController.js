@@ -37,10 +37,10 @@ const updatePatrimonio = async (req, res) => {
       const patrimonioEditado = await Patrimonio.findByPk(id);
       return res.status(200).json(patrimonioEditado);
     } else {
-      res.status(404).json({ mesnaje: "Patrimonio no encontrado" });
+      res.status(404).json({ mensaje: "Patrimonio no encontrado" });
     }
   } catch (error) {
-    res.status(404).json({ erro: error.message });
+    res.status(404).json({ error: error.message });
   }
 };
 
