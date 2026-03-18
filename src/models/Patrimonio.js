@@ -6,6 +6,11 @@ const Patrimonio = sequelize.define('Patrimonio', {
         type: DataTypes.STRING,
         allowNull: false
     },
+    categoria: {
+        type: DataTypes.ENUM('Material', 'Inmaterial', 'Biocultural'),
+        allowNull: false,
+        defaultValue: 'Material'
+    },
     descripcion: {
         type: DataTypes.TEXT,
         allowNull: false
@@ -20,6 +25,13 @@ const Patrimonio = sequelize.define('Patrimonio', {
     },
     imagen_url: {
         type: DataTypes.STRING
+    },
+    municipioId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        validate: {
+            notNull: {msg: "Debes agregar un municipio"}
+        }
     }
 });
 
