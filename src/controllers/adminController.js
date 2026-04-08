@@ -1,77 +1,104 @@
-const Patrimonio = require("../models/Patrimonio");
-const Municipio = require("../models/Municipio");
+const { where, Op } = require("sequelize");
+const { Patrimonio, Municipio, Tag } = require("../models");
 
-//Endpoints de los patrimonios
+//    Endpoints de gestion, patrimonios (ADMINISTRADOR)
 
-const getAllPatrimonios = async (req, res) => {
-  try {
-    const patrimonios = await Patrimonio.findAll({
-      include: [
-        {
-          model: Municipio,
-          as: "municipio",
-          attributes: ["id", "nombre"],
-        },
-      ],
-    });
-    res.json(patrimonios);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-const getPatrimonioById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const patrimoniosById = await Patrimonio.findByPk(id, {
-      include: [
-        {
-          model: Municipio,
-          as: "municipio",
-          attributes: ["id", "nombre"],
-        },
-      ],
-    });
-    res.json(patrimoniosById);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
+//Crear un patrimonio
 const createPatrimonio = async (req, res) => {
   try {
-    const nuevo = await Patrimonio.create(req.body);
+    const { tags, ...datos } = req.body;
 
-    const patrimonioConMunicipio = await Patrimonio.findByPk(nuevo.id, {
-      include: [{ model: Municipio, as: "municipio" }],
+    if (tags) {
+      if (!Array.isArray(tags)){
+        tags = [tags];
+      }
+      if (tags.length === 1 && tags[0].includes(',')){
+        tags = tags[0].split(',').map(t => t.trim());
+      }
+    } else {
+      tags = []
+    }
+
+    const imagenUrl = req.file ? `/uploads/patrimonios/${req.file.filename}` : null;
+
+    const nuevo = await Patrimonio.create({
+      ...datos,
+      imagen_url: imagenUrl
     });
 
-    res.status(201).json(patrimonioConMunicipio);
+    if (tags && Array.isArray(tags) && tags.length > 0) {
+      const tagsLimpios = tags
+        .filter((t) => t && typeof t === "string")
+        .map((t) => t.trim().toLowerCase());
+
+      if (tagsLimpios.length > 0) {
+        const instanciasTags = await Promise.all(
+          tagsLimpios.map((nombreTag) =>
+            Tag.findOrCreate({ where: { nombre: nombreTag } }),
+          ),
+        );
+
+        const tagsParaVincular = instanciasTags.map((t) => t[0]);
+        await nuevo.setTags(tagsParaVincular);
+      }
+    }
+
+    const resultado = await Patrimonio.findByPk(nuevo.id, {
+      include: [
+        { model: Municipio, as: "municipio" },
+        { model: Tag, as: "tags", through: { attributes: [] } },
+      ],
+    });
+
+    return res.status(201).json(resultado);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 };
 
+//Actualizar un patrimonio
 const updatePatrimonio = async (req, res) => {
   try {
     const { id } = req.params;
-    const [filasAfectadas] = await Patrimonio.update(req.body, {
-      where: { id },
-    });
+    const { tags, ...datos } = req.body;
 
-    if (filasAfectadas > 0) {
-      const patrimonioEditado = await Patrimonio.findByPk(id, {
-        include: [{ model: Municipio, as: "municipio" }],
-      });
-      return res.status(200).json(patrimonioEditado);
+    const patrimonio = await Patrimonio.findByPk(id);
+    if (!patrimonio) {
+      return res.status(404).json({ error: "Patrimonio no encontrado" });
     }
 
-    return res.status(404).json({ mensaje: "Patrimonio no encontrado" });
+    await patrimonio.update(datos);
+
+    if (tags && Array.isArray(tags)) {
+      const tagsLimpios = tags
+        .filter((t) => t && typeof t === "string")
+        .map((t) => t.trim().toLowerCase());
+
+      const instanciasTags = await Promise.all(
+        tagsLimpios.map((nombreTag) =>
+          Tag.findOrCreate({ where: { nombre: nombreTag } }),
+        ),
+      );
+
+      const tagsParaVincular = instanciasTags.map((t) => t[0]);
+      await patrimonio.setTags(tagsParaVincular);
+    }
+
+    const resultado = await Patrimonio.findByPk(id, {
+      include: [
+        { model: Municipio, as: "municipio" },
+        { model: Tag, as: "tags", through: { attributes: [] } },
+      ],
+    });
+
+    return res.json(resultado);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
 
+
+//Eliminar un patrimonio
 const deletePatrimonio = async (req, res) => {
   try {
     const { id } = req.params;
@@ -87,48 +114,51 @@ const deletePatrimonio = async (req, res) => {
   }
 };
 
-//Enpoint para obtener los Municipios
+//    Endpoints de gestion, Tags (ADMINISTRADOR)
 
-const getMunicipios = async (req, res) => {
-  try {
-    const lista = await Municipio.findAll({ order: [["nombre", "ASC"]] });
-    return res.json(lista);
+//Editar Tag
+const updateTag = async (req, res) => {
+  try{
+    const {id} = req.params;
+    const {nombre} = req.body;
+
+    if(!nombre) return res.status(400).json({error: "El nombre es requerido"});
+    
+    const tag = await Tag.findByPk(id);
+    if (!tag) return res.status(404).json({error: "Tag no encontrado"});
+
+    tag.nombre = nombre.trim().toLowerCase();
+    await tag.save();
+
+    return res.status(200).json({mensaje: "Tag actualizado", tag})
   } catch (error) {
-    res.status(500).json({ error: "No se cargaron los municipios" });
+    return res.status(500).json({error: error.message})
   }
 };
 
-//Endpoints para obtener los municipios y los patrimonios que pertenecen a el
+//Eliminar Tag
+const deleteTag = async (req, res) => {
+  try{
+    const {id} = req.params;
 
-const getMunicipiosConPatrimonios = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const municipio = await Municipio.findByPk(id, {
-      include: [
-        {
-          model: Patrimonio,
-          as: "patrimonios",
-        },
-      ],
-      order: [[{ model: Patrimonio, as: "patrimonios" }, "nombre", "ASC"]],
-    });
-
-    if (!municipio) {
-      return res.status(404).json({ mensaje: "Municipio no encontrado" });
+    const tag = await Tag.findByPk(id);
+    if (!tag){
+      return res.status(400).json({error: "El tag ya no existe en la base de datos"})
     }
 
-    return res.json(municipio);
+      await tag.destroy();
+
+      return res.status(200).json({mensaje: `Tag '${tag.nombre}' eliminado globalmente con éxito.`});
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({error: "Error al eliminar Tag: " + error.message});
   }
 };
 
+
 module.exports = {
-  getAllPatrimonios,
+  updateTag,
+  deleteTag,
   createPatrimonio,
   updatePatrimonio,
   deletePatrimonio,
-  getPatrimonioById,
-  getMunicipios,
-  getMunicipiosConPatrimonios,
 };

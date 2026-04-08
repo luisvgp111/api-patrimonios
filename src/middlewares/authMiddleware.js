@@ -8,7 +8,7 @@ const authMiddleware = (req, res, next) => {
     }
 
     try{
-        const cifrado = jwt.verify(token, "PALABRA_CLAVE");
+        const cifrado = jwt.verify(token, "PALABRA_CIFRADA");
         req.usuario = cifrado;
         next();
     } catch (error) {

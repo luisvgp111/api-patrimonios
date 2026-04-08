@@ -22,6 +22,7 @@ const registrar = async (req, res) => {
     }
 };
 
+
 //Inicio de sesion con credenciales existentes
 const login = async (req, res) => {
     try{
@@ -39,7 +40,7 @@ const login = async (req, res) => {
 
         const token = jwt.sign(
             {id: usuario.id, nombre: usuario.nombre},
-            "PALABRA_CLAVE",
+            "PALABRA_CIFRADA",
             {expiresIn:"24h"}
         );
         
