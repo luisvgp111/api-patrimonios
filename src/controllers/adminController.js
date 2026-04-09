@@ -1,5 +1,7 @@
 const { where, Op } = require("sequelize");
 const { Patrimonio, Municipio, Tag } = require("../models");
+const path = require("path");
+const fs = require("fs").promises; // o fs.promises
 
 //    Endpoints de gestion, patrimonios (ADMINISTRADOR)
 
@@ -56,39 +58,73 @@ const createPatrimonio = async (req, res) => {
   }
 };
 
-//Actualizar un patrimonio
+// Actualizar un patrimonio (CON manejo de imagen) NUEVO
 const updatePatrimonio = async (req, res) => {
   try {
     const { id } = req.params;
-    const { tags, ...datos } = req.body;
+    let { tags, ...datos } = req.body;
 
+    // Buscar el patrimonio existente
     const patrimonio = await Patrimonio.findByPk(id);
     if (!patrimonio) {
       return res.status(404).json({ error: "Patrimonio no encontrado" });
     }
 
-    await patrimonio.update(datos);
-
-    if (tags && Array.isArray(tags)) {
-      const tagsLimpios = tags
-        .filter((t) => t && typeof t === "string")
-        .map((t) => t.trim().toLowerCase());
-
-      const instanciasTags = await Promise.all(
-        tagsLimpios.map((nombreTag) =>
-          Tag.findOrCreate({ where: { nombre: nombreTag } }),
-        ),
-      );
-
-      const tagsParaVincular = instanciasTags.map((t) => t[0]);
-      await patrimonio.setTags(tagsParaVincular);
+    // --- Manejo de imagen ---
+    let nuevaImagenUrl = patrimonio.imagen_url; // conservar la actual por defecto
+    if (req.file) {
+      // Eliminar la imagen anterior si existe
+      if (patrimonio.imagen_url) {
+        const oldImagePath = path.join(__dirname, "..", patrimonio.imagen_url);
+        try {
+          await fs.unlink(oldImagePath);
+        } catch (err) {
+          console.error("Error al eliminar imagen anterior:", err.message);
+        }
+      }
+      nuevaImagenUrl = `/uploads/patrimonios/${req.file.filename}`;
     }
 
+    // --- Manejo de tags (normalizar para multipart) ---
+    if (tags) {
+      if (!Array.isArray(tags)) tags = [tags];
+      if (tags.length === 1 && tags[0].includes(",")) {
+        tags = tags[0].split(",").map(t => t.trim());
+      }
+    } else {
+      tags = [];
+    }
+
+    // Actualizar campos (incluyendo la nueva URL de imagen si corresponde)
+    await patrimonio.update({
+      ...datos,
+      imagen_url: nuevaImagenUrl
+    });
+
+    // Actualizar tags
+    if (tags.length > 0) {
+      const tagsLimpios = tags
+        .filter(t => t && typeof t === "string")
+        .map(t => t.trim().toLowerCase());
+
+      if (tagsLimpios.length) {
+        const instanciasTags = await Promise.all(
+          tagsLimpios.map(nombreTag => Tag.findOrCreate({ where: { nombre: nombreTag } }))
+        );
+        const tagsParaVincular = instanciasTags.map(t => t[0]);
+        await patrimonio.setTags(tagsParaVincular);
+      }
+    } else {
+      // Si no se enviaron tags, se pueden dejar los existentes o limpiarlos
+      // (opcional: await patrimonio.setTags([]);)
+    }
+
+    // Obtener el patrimonio actualizado con sus relaciones
     const resultado = await Patrimonio.findByPk(id, {
       include: [
         { model: Municipio, as: "municipio" },
-        { model: Tag, as: "tags", through: { attributes: [] } },
-      ],
+        { model: Tag, as: "tags", through: { attributes: [] } }
+      ]
     });
 
     return res.json(resultado);
@@ -96,6 +132,47 @@ const updatePatrimonio = async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 };
+
+//Actualizar un patrimonio
+// const updatePatrimonio = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { tags, ...datos } = req.body;
+
+//     const patrimonio = await Patrimonio.findByPk(id);
+//     if (!patrimonio) {
+//       return res.status(404).json({ error: "Patrimonio no encontrado" });
+//     }
+
+//     await patrimonio.update(datos);
+
+//     if (tags && Array.isArray(tags)) {
+//       const tagsLimpios = tags
+//         .filter((t) => t && typeof t === "string")
+//         .map((t) => t.trim().toLowerCase());
+
+//       const instanciasTags = await Promise.all(
+//         tagsLimpios.map((nombreTag) =>
+//           Tag.findOrCreate({ where: { nombre: nombreTag } }),
+//         ),
+//       );
+
+//       const tagsParaVincular = instanciasTags.map((t) => t[0]);
+//       await patrimonio.setTags(tagsParaVincular);
+//     }
+
+//     const resultado = await Patrimonio.findByPk(id, {
+//       include: [
+//         { model: Municipio, as: "municipio" },
+//         { model: Tag, as: "tags", through: { attributes: [] } },
+//       ],
+//     });
+
+//     return res.json(resultado);
+//   } catch (error) {
+//     return res.status(500).json({ error: error.message });
+//   }
+// };
 
 
 //Eliminar un patrimonio

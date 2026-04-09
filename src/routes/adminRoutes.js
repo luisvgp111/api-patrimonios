@@ -13,7 +13,7 @@ router.get("/patrimonios/:id", publicController.getPatrimonioById);
 
 // Acciones del CRUD para patrimonios
 router.post("/patrimonios", auth, upload.single('imagen'), adminController.createPatrimonio);
-router.put("/patrimonios/:id", auth, adminController.updatePatrimonio);
+router.put("/patrimonios/:id", auth, upload.single('imagen'), adminController.updatePatrimonio);
 router.delete("/patrimonios/:id", auth, adminController.deletePatrimonio);
 
 //Acciones para Tags
