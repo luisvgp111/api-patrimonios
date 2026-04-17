@@ -1,9 +1,9 @@
 const express = require("express");
 const router = express.Router();
 const adminController = require("../controllers/adminController");
-const auth = require('../middlewares/authMiddleware')
-const publicController = require("../controllers/publicController")
-const upload = require('../middlewares/upload')
+const auth = require("../middlewares/authMiddleware");
+const publicController = require("../controllers/publicController");
+const upload = require("../middlewares/upload");
 
 //      Rutas privadas
 // El admin hace uso de la lista de municipios al momento de registrar un patrimonio
@@ -12,8 +12,24 @@ router.get("/patrimonios", publicController.getAllPatrimonios);
 router.get("/patrimonios/:id", publicController.getPatrimonioById);
 
 // Acciones del CRUD para patrimonios
-router.post("/patrimonios", auth, upload.single('imagen'), adminController.createPatrimonio);
-router.put("/patrimonios/:id", auth, upload.single('imagen'), adminController.updatePatrimonio);
+router.post(
+  "/patrimonios",
+  auth,
+  upload.fields([
+    { name: "portada", maxCount: 1 },
+    { name: "imagenes", maxCount: 10 },
+  ]),
+  adminController.createPatrimonio,
+);
+//Editar patrimonios y sus imagenes
+router.put(
+  "/patrimonios/:id",
+  upload.fields([
+    { name: "portada", maxCount: 1 },
+    { name: "imagenes", maxCount: 10 },
+  ]),
+  adminController.updatePatrimonio,
+);
 router.delete("/patrimonios/:id", auth, adminController.deletePatrimonio);
 
 //Acciones para Tags

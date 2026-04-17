@@ -1,6 +1,7 @@
 const { where, Op } = require("sequelize");
 const { Patrimonio, Municipio, Tag } = require("../models");
 const path = require("path");
+const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 const fs = require("fs").promises; // o fs.promises
 
 //    Endpoints de gestion, patrimonios (ADMINISTRADOR)
@@ -8,40 +9,43 @@ const fs = require("fs").promises; // o fs.promises
 //Crear un patrimonio
 const createPatrimonio = async (req, res) => {
   try {
-    const { tags, ...datos } = req.body;
+    let { tags, ...datos } = req.body;
 
-    if (tags) {
-      if (!Array.isArray(tags)){
-        tags = [tags];
-      }
-      if (tags.length === 1 && tags[0].includes(',')){
-        tags = tags[0].split(',').map(t => t.trim());
-      }
-    } else {
-      tags = []
+    //Manejo de la portada (imagen_url)
+    if (req.files && req.files['portada']) {
+      datos.imagen_url = `/uploads/patrimonios/${req.files['portada'][0].filename}`;
     }
 
-    const imagenUrl = req.file ? `/uploads/patrimonios/${req.file.filename}` : null;
+    //Registro base del patrimonio
+    const nuevo = await Patrimonio.create(datos);
 
-    const nuevo = await Patrimonio.create({
-      ...datos,
-      imagen_url: imagenUrl
-    });
+    //Manejo de la galeria para poner varias imagenes
+    if(req.files && req.files['imagenes']) {
+      const imagenesGaleria = req.files['imagenes'].map(file => ({
+        url: `/uploads/patrimonios/${file.filename}`,
+        patrimonioId: nuevo.id
+      }));
+      await ImagenPatrimonio.bulkCreate(imagenesGaleria);
+    }
+    
+    //Logica de los tags
+if (tags) {
+      // Normalización
+      if (typeof tags === 'string') {
+        tags = tags.split(',').map(t => t.trim());
+      } else if (Array.isArray(tags)) {
+        tags = tags.flatMap(t => typeof t === 'string' ? t.split(',') : t).map(t => t.trim());
+      }
 
-    if (tags && Array.isArray(tags) && tags.length > 0) {
-      const tagsLimpios = tags
-        .filter((t) => t && typeof t === "string")
-        .map((t) => t.trim().toLowerCase());
-
-      if (tagsLimpios.length > 0) {
+      if (tags.length > 0) {
         const instanciasTags = await Promise.all(
-          tagsLimpios.map((nombreTag) =>
-            Tag.findOrCreate({ where: { nombre: nombreTag } }),
-          ),
+          tags.map(nombre => 
+            Tag.findOrCreate({ 
+              where: { nombre: nombre.toLowerCase() } 
+            })
+          )
         );
-
-        const tagsParaVincular = instanciasTags.map((t) => t[0]);
-        await nuevo.setTags(tagsParaVincular);
+        await nuevo.setTags(instanciasTags.map(t => t[0]));
       }
     }
 
@@ -49,6 +53,7 @@ const createPatrimonio = async (req, res) => {
       include: [
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
+        {model: ImagenPatrimonio, as: "galeria"}
       ],
     });
 
@@ -62,30 +67,49 @@ const createPatrimonio = async (req, res) => {
 const updatePatrimonio = async (req, res) => {
   try {
     const { id } = req.params;
-    let { tags, ...datos } = req.body;
+    // CORREGIDO: "eliminarImagenesIds" con 'n'
+    let { tags, eliminarImagenesIds, ...datos } = req.body;
 
-    // Buscar el patrimonio existente
     const patrimonio = await Patrimonio.findByPk(id);
-    if (!patrimonio) {
-      return res.status(404).json({ error: "Patrimonio no encontrado" });
-    }
+    if (!patrimonio) return res.status(404).json({ error: "Patrimonio no encontrado" });
 
-    // --- Manejo de imagen ---
-    let nuevaImagenUrl = patrimonio.imagen_url; // conservar la actual por defecto
-    if (req.file) {
-      // Eliminar la imagen anterior si existe
+    // 1. Imagen de la portada
+    if (req.files && req.files['portada']) {
       if (patrimonio.imagen_url) {
-        const oldImagePath = path.join(__dirname, "..", patrimonio.imagen_url);
-        try {
-          await fs.unlink(oldImagePath);
-        } catch (err) {
-          console.error("Error al eliminar imagen anterior:", err.message);
-        }
+        // Asegúrate de que la ruta apunte correctamente a la carpeta raíz de tu proyecto
+        const oldPath = path.join(__dirname, "..", "..", patrimonio.imagen_url); 
+        try { await fs.unlink(oldPath); } catch (err) { console.error("Error al borrar portada", err.message); }
       }
-      nuevaImagenUrl = `/uploads/patrimonios/${req.file.filename}`;
+      datos.imagen_url = `/uploads/patrimonios/${req.files['portada'][0].filename}`;
     }
 
-    // --- Manejo de tags (normalizar para multipart) ---
+    // 2. Borrar imagenes de la galeria
+    if (eliminarImagenesIds) {
+      // Convertir a array si viene como un solo string/ID
+      const ids = Array.isArray(eliminarImagenesIds) ? eliminarImagenesIds : [eliminarImagenesIds];
+      const imagenesABorrar = await ImagenPatrimonio.findAll({ where: { id: ids, patrimonioId: id } });
+
+      for (const img of imagenesABorrar) {
+        const filePath = path.join(__dirname, "..", "..", img.url);
+        try { 
+          await fs.unlink(filePath); 
+        } catch (err) { 
+          console.log("El archivo no existe en el disco, procediendo a borrar registro de DB"); 
+        }
+        await img.destroy();
+      }
+    }
+
+    // 3. Agregar imagenes a la galeria
+    if (req.files && req.files['imagenes']) {
+      const nuevasFotos = req.files['imagenes'].map(file => ({
+        url: `/uploads/patrimonios/${file.filename}`,
+        patrimonioId: id
+      }));
+      await ImagenPatrimonio.bulkCreate(nuevasFotos);
+    }
+
+    // 4. Manejo de tags
     if (tags) {
       if (!Array.isArray(tags)) tags = [tags];
       if (tags.length === 1 && tags[0].includes(",")) {
@@ -95,35 +119,24 @@ const updatePatrimonio = async (req, res) => {
       tags = [];
     }
 
-    // Actualizar campos (incluyendo la nueva URL de imagen si corresponde)
-    await patrimonio.update({
-      ...datos,
-      imagen_url: nuevaImagenUrl
-    });
+    // 5. Actualizar campos básicos
+    await patrimonio.update(datos);
 
-    // Actualizar tags
+    // 6. Sincronizar tags
     if (tags.length > 0) {
-      const tagsLimpios = tags
-        .filter(t => t && typeof t === "string")
-        .map(t => t.trim().toLowerCase());
-
-      if (tagsLimpios.length) {
-        const instanciasTags = await Promise.all(
-          tagsLimpios.map(nombreTag => Tag.findOrCreate({ where: { nombre: nombreTag } }))
-        );
-        const tagsParaVincular = instanciasTags.map(t => t[0]);
-        await patrimonio.setTags(tagsParaVincular);
-      }
-    } else {
-      // Si no se enviaron tags, se pueden dejar los existentes o limpiarlos
-      // (opcional: await patrimonio.setTags([]);)
+      const tagsLimpios = tags.map(t => t.trim().toLowerCase());
+      const instanciasTags = await Promise.all(
+        tagsLimpios.map(nombreTag => Tag.findOrCreate({ where: { nombre: nombreTag } }))
+      );
+      await patrimonio.setTags(instanciasTags.map(t => t[0]));
     }
 
-    // Obtener el patrimonio actualizado con sus relaciones
+    // 7. Resultado final
     const resultado = await Patrimonio.findByPk(id, {
       include: [
         { model: Municipio, as: "municipio" },
-        { model: Tag, as: "tags", through: { attributes: [] } }
+        { model: Tag, as: "tags", through: { attributes: [] } },
+        { model: ImagenPatrimonio, as: "galeria" }
       ]
     });
 
@@ -133,7 +146,9 @@ const updatePatrimonio = async (req, res) => {
   }
 };
 
-//Actualizar un patrimonio
+
+
+//Actualizar un patrimonio (ANTIGUO)
 // const updatePatrimonio = async (req, res) => {
 //   try {
 //     const { id } = req.params;
