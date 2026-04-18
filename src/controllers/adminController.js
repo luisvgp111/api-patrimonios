@@ -84,21 +84,9 @@ const updatePatrimonio = async (req, res) => {
     }
 
     // 2. Borrar imagenes de la galeria
-    if (eliminarImagenesIds) {
-      // Convertir a array si viene como un solo string/ID
-      const ids = Array.isArray(eliminarImagenesIds) ? eliminarImagenesIds : [eliminarImagenesIds];
-      const imagenesABorrar = await ImagenPatrimonio.findAll({ where: { id: ids, patrimonioId: id } });
-
-      for (const img of imagenesABorrar) {
-        const filePath = path.join(__dirname, "..", "..", img.url);
-        try { 
-          await fs.unlink(filePath); 
-        } catch (err) { 
-          console.log("El archivo no existe en el disco, procediendo a borrar registro de DB"); 
-        }
-        await img.destroy();
-      }
-    }
+    if (eliminarImagenesIds && typeof eliminarImagenesIds === 'string') {
+  eliminarImagenesIds = eliminarImagenesIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+}
 
     // 3. Agregar imagenes a la galeria
     if (req.files && req.files['imagenes']) {
