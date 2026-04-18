@@ -1,5 +1,6 @@
 const { where, Op } = require("sequelize");
 const { Tag, Municipio, Patrimonio } = require("../models");
+const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 
 //      Endpoints de solo lectura para (Patrimonios)
 
@@ -28,6 +29,10 @@ const getAllPatrimonios = async (req, res) => {
                     where: {nombre: {[Op.iLike]: `%${tag}%`}},
                     required: true
                 })
+            },
+            {
+              model: ImagenPatrimonio,
+              as: "galeria"
             }
         ],
         order: [["nombre", "ASC"]]
@@ -44,7 +49,7 @@ const getAllPatrimonios = async (req, res) => {
 const getPatrimonioById = async (req, res) => {
   try {
     const { id } = req.params;
-    const patrimoniosById = await Patrimonio.findByPk(id, {
+    const patrimonio = await Patrimonio.findByPk(id, {
       include: [
         {
           model: Municipio,
@@ -56,9 +61,16 @@ const getPatrimonioById = async (req, res) => {
           as: "tags",
           through: { attributes: [] },
         },
+        {
+          model: ImagenPatrimonio,
+          as: "galeria"
+        }
       ],
     });
-    res.json(patrimoniosById);
+
+    if (!patrimonio) return res.status(404).json({error: "No encontrado"});
+    
+    return res.json(patrimonio);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
