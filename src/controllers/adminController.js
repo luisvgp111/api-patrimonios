@@ -1,5 +1,5 @@
 const { where, Op } = require("sequelize");
-const { Patrimonio, Municipio, Tag } = require("../models");
+const { Patrimonio, Municipio, Tag} = require("../models");
 const path = require("path");
 const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 const fs = require("fs").promises; // o fs.promises
@@ -90,26 +90,33 @@ const updatePatrimonio = async (req, res) => {
       datos.imagen_url = `/uploads/patrimonios/${req.files["portada"][0].filename}`;
     }
 
-    // 2. Borrar imagenes de la galeria
-    if (eliminarImagenesIds) {
-      // Convertir a array si viene como un solo string/ID
-      const ids = Array.isArray(eliminarImagenesIds)
-        ? eliminarImagenesIds
-        : [eliminarImagenesIds];
-      const imagenesABorrar = await ImagenPatrimonio.findAll({
-        where: { id: ids, patrimonioId: id },
-      });
+// 2. Borrar imagenes de la galeria
+    if (eliminarImagenesIds && eliminarImagenesIds.length > 0) {
+      const ids = (Array.isArray(eliminarImagenesIds) ? eliminarImagenesIds : [eliminarImagenesIds])
+                  .map(id => parseInt(id))
+                  .filter(id => !isNaN(id));
 
-      for (const img of imagenesABorrar) {
-        const filePath = path.join(__dirname, "..", "..", img.url);
-        try {
-          await fs.unlink(filePath);
-        } catch (err) {
-          console.log(
-            "El archivo no existe en el disco, procediendo a borrar registro de DB",
-          );
+      if (ids.length > 0) {
+        const imagenesABorrar = await ImagenPatrimonio.findAll({
+          where: { 
+            id: ids, 
+            patrimonioId: id 
+          },
+        });
+
+        for (const img of imagenesABorrar) {
+          const cleanPath = img.url.startsWith('/') ? img.url.slice(1) : img.url;
+          const filePath = path.resolve(process.cwd(), cleanPath);
+
+          try {
+            await fs.unlink(filePath);
+            console.log("Eliminado físicamente:", filePath);
+          } catch (err) {
+            console.log("No se encontró el archivo en disco, pero borraremos de DB.");
+          }
+
+          await img.destroy();
         }
-        await img.destroy();
       }
     }
 
