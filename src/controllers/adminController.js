@@ -3,6 +3,7 @@ const { Patrimonio, Municipio, Tag } = require("../models");
 const path = require("path");
 const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 const fs = require("fs").promises; // o fs.promises
+const ExcelJS = require('exceljs');
 
 //    Endpoints de gestion, patrimonios (ADMINISTRADOR)
 
@@ -71,28 +72,69 @@ const updatePatrimonio = async (req, res) => {
     let { tags, eliminarImagenesIds, ...datos } = req.body;
 
     const patrimonio = await Patrimonio.findByPk(id);
-    if (!patrimonio) return res.status(404).json({ error: "Patrimonio no encontrado" });
+    if (!patrimonio)
+      return res.status(404).json({ error: "Patrimonio no encontrado" });
 
     // 1. Imagen de la portada
-    if (req.files && req.files['portada']) {
+    if (req.files && req.files["portada"]) {
       if (patrimonio.imagen_url) {
         // Asegúrate de que la ruta apunte correctamente a la carpeta raíz de tu proyecto
-        const oldPath = path.join(__dirname, "..", "..", patrimonio.imagen_url); 
-        try { await fs.unlink(oldPath); } catch (err) { console.error("Error al borrar portada", err.message); }
+        const oldPath = path.join(__dirname, "..", "..", patrimonio.imagen_url);
+        try {
+          await fs.unlink(oldPath);
+        } catch (err) {
+          console.error("Error al borrar portada", err.message);
+        }
       }
-      datos.imagen_url = `/uploads/patrimonios/${req.files['portada'][0].filename}`;
+      datos.imagen_url = `/uploads/patrimonios/${req.files["portada"][0].filename}`;
     }
 
-    // 2. Borrar imagenes de la galeria
-    if (eliminarImagenesIds && typeof eliminarImagenesIds === 'string') {
-  eliminarImagenesIds = eliminarImagenesIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
-}
+// 2. Borrar imagenes de la galeria
+if (eliminarImagenesIds) {
+      let idsProcesados = [];
+
+      if (Array.isArray(eliminarImagenesIds)) {
+        idsProcesados = eliminarImagenesIds;
+      } else if (typeof eliminarImagenesIds === 'string' && eliminarImagenesIds.includes(',')) {
+        idsProcesados = eliminarImagenesIds.split(',');
+      } else {
+        idsProcesados = [eliminarImagenesIds];
+      }
+
+      const ids = idsProcesados
+                  .map(id => parseInt(id))
+                  .filter(id => !isNaN(id));
+
+      console.log("ID por imagen eliminada:", ids);
+
+      if (ids.length > 0) {
+        const imagenesABorrar = await ImagenPatrimonio.findAll({
+          where: { 
+            id: ids, 
+            patrimonioId: id 
+          },
+        });
+
+        for (const img of imagenesABorrar) {
+          const cleanPath = img.url.startsWith('/') ? img.url.slice(1) : img.url;
+          const filePath = path.resolve(process.cwd(), cleanPath);
+
+          try {
+            await fs.unlink(filePath);
+          } catch (err) {
+            console.log("No se encontró el archivo en disco, pero borraremos de DB.");
+          }
+
+          await img.destroy();
+        }
+      }
+    }
 
     // 3. Agregar imagenes a la galeria
-    if (req.files && req.files['imagenes']) {
-      const nuevasFotos = req.files['imagenes'].map(file => ({
+    if (req.files && req.files["imagenes"]) {
+      const nuevasFotos = req.files["imagenes"].map((file) => ({
         url: `/uploads/patrimonios/${file.filename}`,
-        patrimonioId: id
+        patrimonioId: id,
       }));
       await ImagenPatrimonio.bulkCreate(nuevasFotos);
     }
@@ -101,7 +143,7 @@ const updatePatrimonio = async (req, res) => {
     if (tags) {
       if (!Array.isArray(tags)) tags = [tags];
       if (tags.length === 1 && tags[0].includes(",")) {
-        tags = tags[0].split(",").map(t => t.trim());
+        tags = tags[0].split(",").map((t) => t.trim());
       }
     } else {
       tags = [];
@@ -112,11 +154,13 @@ const updatePatrimonio = async (req, res) => {
 
     // 6. Sincronizar tags
     if (tags.length > 0) {
-      const tagsLimpios = tags.map(t => t.trim().toLowerCase());
+      const tagsLimpios = tags.map((t) => t.trim().toLowerCase());
       const instanciasTags = await Promise.all(
-        tagsLimpios.map(nombreTag => Tag.findOrCreate({ where: { nombre: nombreTag } }))
+        tagsLimpios.map((nombreTag) =>
+          Tag.findOrCreate({ where: { nombre: nombreTag } }),
+        ),
       );
-      await patrimonio.setTags(instanciasTags.map(t => t[0]));
+      await patrimonio.setTags(instanciasTags.map((t) => t[0]));
     }
 
     // 7. Resultado final
@@ -124,8 +168,8 @@ const updatePatrimonio = async (req, res) => {
       include: [
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
-        { model: ImagenPatrimonio, as: "galeria" }
-      ]
+        { model: ImagenPatrimonio, as: "galeria" },
+      ],
     });
 
     return res.json(resultado);
@@ -133,50 +177,6 @@ const updatePatrimonio = async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 };
-
-
-
-//Actualizar un patrimonio (ANTIGUO)
-// const updatePatrimonio = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { tags, ...datos } = req.body;
-
-//     const patrimonio = await Patrimonio.findByPk(id);
-//     if (!patrimonio) {
-//       return res.status(404).json({ error: "Patrimonio no encontrado" });
-//     }
-
-//     await patrimonio.update(datos);
-
-//     if (tags && Array.isArray(tags)) {
-//       const tagsLimpios = tags
-//         .filter((t) => t && typeof t === "string")
-//         .map((t) => t.trim().toLowerCase());
-
-//       const instanciasTags = await Promise.all(
-//         tagsLimpios.map((nombreTag) =>
-//           Tag.findOrCreate({ where: { nombre: nombreTag } }),
-//         ),
-//       );
-
-//       const tagsParaVincular = instanciasTags.map((t) => t[0]);
-//       await patrimonio.setTags(tagsParaVincular);
-//     }
-
-//     const resultado = await Patrimonio.findByPk(id, {
-//       include: [
-//         { model: Municipio, as: "municipio" },
-//         { model: Tag, as: "tags", through: { attributes: [] } },
-//       ],
-//     });
-
-//     return res.json(resultado);
-//   } catch (error) {
-//     return res.status(500).json({ error: error.message });
-//   }
-// };
-
 
 //Eliminar un patrimonio
 const deletePatrimonio = async (req, res) => {
@@ -234,6 +234,56 @@ const deleteTag = async (req, res) => {
   }
 };
 
+//Exportar los patrimonios a excel
+const exportarPatrimonios = async (req, res) => {
+  try {
+    const patrimonios = await Patrimonio.findAll({
+      include: [
+        { model: Municipio, as: "municipio" },
+        { model: Tag, as: "tags", through: { attributes: [] } },
+      ],
+    });
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Patrimonios");
+
+    worksheet.columns = [
+      { header: "ID", key: "id", width: 10 },
+      { header: "Nombre", key: "nombre", width: 30 },
+      { header: "Categoría", key: "categoria", width: 15 },
+      { header: "Municipio", key: "municipio", width: 20 },
+      { header: "Descripción", key: "descripcion", width: 50 },
+      { header: "Tags", key: "tags", width: 30 },
+    ];
+
+    worksheet.getRow(1).font = { bold: true };
+
+    patrimonios.forEach((p) => {
+      worksheet.addRow({
+        id: p.id,
+        nombre: p.nombre,
+        categoria: p.categoria,
+        municipio: p.municipio ? p.municipio.nombre : "N/A",
+        descripcion: p.descripcion,
+        tags: p.tags.map((t) => t.nombre).join(", "),
+      });
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=patrimonios_sonora.xlsx",
+    );
+
+    await workbook.xlsx.write(res);
+    res.status(200).end();
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
 
 module.exports = {
   updateTag,
@@ -241,4 +291,5 @@ module.exports = {
   createPatrimonio,
   updatePatrimonio,
   deletePatrimonio,
+  exportarPatrimonios
 };

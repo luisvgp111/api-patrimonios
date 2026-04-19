@@ -6,6 +6,8 @@ const publicController = require("../controllers/publicController");
 const upload = require("../middlewares/upload");
 
 //      Rutas privadas
+router.get('/exportar-excel', auth, adminController.exportarPatrimonios)
+
 // El admin hace uso de la lista de municipios al momento de registrar un patrimonio
 router.get("/municipios", auth, publicController.getMunicipios);
 router.get("/patrimonios", publicController.getAllPatrimonios);
@@ -30,6 +32,7 @@ router.put(
   ]),
   adminController.updatePatrimonio,
 );
+
 router.delete("/patrimonios/:id", auth, adminController.deletePatrimonio);
 
 //Acciones para Tags
