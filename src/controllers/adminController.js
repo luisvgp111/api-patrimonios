@@ -3,6 +3,7 @@ const { Patrimonio, Municipio, Tag} = require("../models");
 const path = require("path");
 const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 const fs = require("fs").promises; // o fs.promises
+const ExcelJS = require('exceljs');
 
 //    Endpoints de gestion, patrimonios (ADMINISTRADOR)
 
@@ -179,47 +180,6 @@ if (eliminarImagenesIds) {
   }
 };
 
-//Actualizar un patrimonio (ANTIGUO)
-// const updatePatrimonio = async (req, res) => {
-//   try {
-//     const { id } = req.params;
-//     const { tags, ...datos } = req.body;
-
-//     const patrimonio = await Patrimonio.findByPk(id);
-//     if (!patrimonio) {
-//       return res.status(404).json({ error: "Patrimonio no encontrado" });
-//     }
-
-//     await patrimonio.update(datos);
-
-//     if (tags && Array.isArray(tags)) {
-//       const tagsLimpios = tags
-//         .filter((t) => t && typeof t === "string")
-//         .map((t) => t.trim().toLowerCase());
-
-//       const instanciasTags = await Promise.all(
-//         tagsLimpios.map((nombreTag) =>
-//           Tag.findOrCreate({ where: { nombre: nombreTag } }),
-//         ),
-//       );
-
-//       const tagsParaVincular = instanciasTags.map((t) => t[0]);
-//       await patrimonio.setTags(tagsParaVincular);
-//     }
-
-//     const resultado = await Patrimonio.findByPk(id, {
-//       include: [
-//         { model: Municipio, as: "municipio" },
-//         { model: Tag, as: "tags", through: { attributes: [] } },
-//       ],
-//     });
-
-//     return res.json(resultado);
-//   } catch (error) {
-//     return res.status(500).json({ error: error.message });
-//   }
-// };
-
 //Eliminar un patrimonio
 const deletePatrimonio = async (req, res) => {
   try {
@@ -296,7 +256,7 @@ const exportarPatrimonios = async (req, res) => {
     });
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = new workbook.addWorksheet("Patrimonios");
+    const worksheet = workbook.addWorksheet("Patrimonios");
 
     worksheet.columns = [
       { header: "ID", key: "id", width: 10 },
