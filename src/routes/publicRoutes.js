@@ -10,6 +10,9 @@ router.get("/municipios/:id", publicController.getMunicipiosConPatrimonios);
 router.get("/patrimonios", publicController.getAllPatrimonios);
 router.get("/patrimonios/:id", publicController.getPatrimonioById);
 
-router.get("/tags", publicController.getAllTags)
+router.get("/tags", publicController.getAllTags);
+
+//Exportar en PDF
+router.get('/patrimonios/:id/reporte', adminController.getPatrimonioParaReporte);
 
 module.exports = router;

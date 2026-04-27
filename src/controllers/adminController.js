@@ -1,9 +1,10 @@
 const { where, Op } = require("sequelize");
-const { Patrimonio, Municipio, Tag} = require("../models");
+const { Patrimonio, Municipio, Tag } = require("../models");
 const path = require("path");
 const ImagenPatrimonio = require("../models/ImagenPatrimonio");
-const fs = require("fs").promises; // o fs.promises
-const ExcelJS = require('exceljs');
+const fs = require("fs");
+const html_to_pdf = require("html-pdf-node");
+const ExcelJS = require("exceljs");
 
 //    Endpoints de gestion, patrimonios (ADMINISTRADOR)
 
@@ -91,40 +92,47 @@ const updatePatrimonio = async (req, res) => {
       datos.imagen_url = `/uploads/patrimonios/${req.files["portada"][0].filename}`;
     }
 
-// 2. Borrar imagenes de la galeria
-if (eliminarImagenesIds) {
+    // 2. Borrar imagenes de la galeria
+    if (eliminarImagenesIds) {
       let idsProcesados = [];
 
       if (Array.isArray(eliminarImagenesIds)) {
         idsProcesados = eliminarImagenesIds;
-      } else if (typeof eliminarImagenesIds === 'string' && eliminarImagenesIds.includes(',')) {
-        idsProcesados = eliminarImagenesIds.split(',');
+      } else if (
+        typeof eliminarImagenesIds === "string" &&
+        eliminarImagenesIds.includes(",")
+      ) {
+        idsProcesados = eliminarImagenesIds.split(",");
       } else {
         idsProcesados = [eliminarImagenesIds];
       }
 
       const ids = idsProcesados
-                  .map(id => parseInt(id))
-                  .filter(id => !isNaN(id));
+        .map((id) => parseInt(id))
+        .filter((id) => !isNaN(id));
 
       console.log("ID por imagen eliminada:", ids);
 
       if (ids.length > 0) {
         const imagenesABorrar = await ImagenPatrimonio.findAll({
-          where: { 
-            id: ids, 
-            patrimonioId: id 
+          where: {
+            id: ids,
+            patrimonioId: id,
           },
         });
 
         for (const img of imagenesABorrar) {
-          const cleanPath = img.url.startsWith('/') ? img.url.slice(1) : img.url;
+          const cleanPath = img.url.startsWith("/")
+            ? img.url.slice(1)
+            : img.url;
           const filePath = path.resolve(process.cwd(), cleanPath);
 
           try {
             await fs.unlink(filePath);
           } catch (err) {
-            console.log("No se encontró el archivo en disco, pero borraremos de DB.");
+            console.log(
+              "No se encontró el archivo en disco, pero borraremos de DB.",
+            );
           }
 
           await img.destroy();
@@ -233,11 +241,9 @@ const deleteTag = async (req, res) => {
 
     await tag.destroy();
 
-    return res
-      .status(200)
-      .json({
-        mensaje: `Tag '${tag.nombre}' eliminado globalmente con éxito.`,
-      });
+    return res.status(200).json({
+      mensaje: `Tag '${tag.nombre}' eliminado globalmente con éxito.`,
+    });
   } catch (error) {
     return res
       .status(500)
@@ -265,6 +271,8 @@ const exportarPatrimonios = async (req, res) => {
       { header: "Municipio", key: "municipio", width: 20 },
       { header: "Descripción", key: "descripcion", width: 50 },
       { header: "Tags", key: "tags", width: 30 },
+      { header: "Longitud", key: "longitud", width: 30 },
+      { header: "Latitud", key: "latitud", width: 30 },
     ];
 
     worksheet.getRow(1).font = { bold: true };
@@ -277,6 +285,8 @@ const exportarPatrimonios = async (req, res) => {
         municipio: p.municipio ? p.municipio.nombre : "N/A",
         descripcion: p.descripcion,
         tags: p.tags.map((t) => t.nombre).join(", "),
+        longitud: p.longitud,
+        latitud: p.latitud,
       });
     });
 
@@ -296,11 +306,57 @@ const exportarPatrimonios = async (req, res) => {
   }
 };
 
+
+//Exportar datos para el PDF
+const getPatrimonioParaReporte = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const patrimonio = await Patrimonio.findByPk(id, {
+      include: [
+        { model: Municipio, as: "municipio", attributes: ["nombre"] },
+        { model: Tag, as: "tags", through: { attributes: [] } },
+        { model: ImagenPatrimonio, as: "galeria", attributes: ["id", "url"] }
+      ],
+    });
+
+    if (!patrimonio) {
+      return res.status(404).json({ message: "Patrimonio no encontrado" });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    const dataReporte = {
+      id: patrimonio.id,
+      nombre: patrimonio.nombre,
+      categoria: patrimonio.categoria,
+      descripcion: patrimonio.descripcion,
+      coordenadas: {
+        lat: patrimonio.latitud,
+        lng: patrimonio.longitud
+      },
+      municipio: patrimonio.municipio ? patrimonio.municipio.nombre : "N/A",
+      tags: patrimonio.tags.map(t => t.nombre),
+      portada: `${baseUrl}${patrimonio.imagen_url}`,
+      galeria: patrimonio.galeria.map(img => ({
+        id: img.id,
+        url: `${baseUrl}${img.url}`
+      }))
+    };
+
+    res.json(dataReporte);
+
+  } catch (error) {
+    res.status(500).json({ error: "Error al obtener datos para el reporte" });
+  }
+};
+
 module.exports = {
   updateTag,
   deleteTag,
   createPatrimonio,
   updatePatrimonio,
   deletePatrimonio,
-  exportarPatrimonios
+  exportarPatrimonios,
+  getPatrimonioParaReporte
 };
