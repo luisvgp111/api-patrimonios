@@ -1,5 +1,5 @@
 const { where, Op } = require("sequelize");
-const { Tag, Municipio, Patrimonio } = require("../models");
+const { Tag, Municipio, Patrimonio, Ubicacion } = require("../models");
 const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 
 //      Endpoints de solo lectura para (Patrimonios)
@@ -33,6 +33,10 @@ const getAllPatrimonios = async (req, res) => {
             {
               model: ImagenPatrimonio,
               as: "galeria"
+            },
+            {
+              model: Ubicacion,
+              as: "ubicaciones"
             }
         ],
         order: [["nombre", "ASC"]]
@@ -64,6 +68,10 @@ const getPatrimonioById = async (req, res) => {
         {
           model: ImagenPatrimonio,
           as: "galeria"
+        },
+        {
+          model: Ubicacion,
+          as: "ubicaciones"
         }
       ],
     });

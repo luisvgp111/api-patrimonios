@@ -1,17 +1,15 @@
 const { where, Op } = require("sequelize");
-const { Patrimonio, Municipio, Tag } = require("../models");
+const { Patrimonio, Municipio, Tag, Ubicacion } = require("../models");
 const path = require("path");
 const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 const fs = require("fs");
 const html_to_pdf = require("html-pdf-node");
 const ExcelJS = require("exceljs");
 
-//    Endpoints de gestion, patrimonios (ADMINISTRADOR)
-
 //Crear un patrimonio
 const createPatrimonio = async (req, res) => {
   try {
-    let { tags, ...datos } = req.body;
+    let { tags, ubicaciones, ...datos } = req.body;
 
     //Manejo de la portada (imagen_url)
     if (req.files && req.files["portada"]) {
@@ -20,6 +18,29 @@ const createPatrimonio = async (req, res) => {
 
     //Registro base del patrimonio
     const nuevo = await Patrimonio.create(datos);
+
+    if (ubicaciones) {
+      const ubicacionesData =
+        typeof ubicaciones === "string" ? JSON.parse(ubicaciones) : ubicaciones;
+
+      if (Array.isArray(ubicacionesData) && ubicacionesData.length > 0) {
+        const ubicacionesParaGuardar = ubicacionesData.map((ubi, index) => {
+          const ubiFinal = {
+            nombre_punto: ubi.nombre_punto,
+            latitud: ubi.latitud,
+            longitud: ubi.longitud,
+            patrimonioId: nuevo.id,
+            es_principal: index === 0,
+          };
+          console.log(
+            `Punto [${index}]: ${ubiFinal.nombre_punto} -> es_principal: ${ubiFinal.es_principal}`,
+          );
+          return ubiFinal;
+        });
+
+        await Ubicacion.bulkCreate(ubicacionesParaGuardar);
+      }
+    }
 
     //Manejo de la galeria para poner varias imagenes
     if (req.files && req.files["imagenes"]) {
@@ -32,7 +53,6 @@ const createPatrimonio = async (req, res) => {
 
     //Logica de los tags
     if (tags) {
-      // Normalización
       if (typeof tags === "string") {
         tags = tags.split(",").map((t) => t.trim());
       } else if (Array.isArray(tags)) {
@@ -58,6 +78,15 @@ const createPatrimonio = async (req, res) => {
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
         { model: ImagenPatrimonio, as: "galeria" },
+        {
+          model: Ubicacion,
+          as: "ubicaciones",
+          separate: true,
+          order: [
+            ["es_principal", "DESC"],
+            ["id", "ASC"],
+          ],
+        },
       ],
     });
 
@@ -67,22 +96,30 @@ const createPatrimonio = async (req, res) => {
   }
 };
 
-// Actualizar un patrimonio (CON manejo de imagen) NUEVO
+// Actualizar un patrimonio
 const updatePatrimonio = async (req, res) => {
   try {
     const { id } = req.params;
-    let { tags, eliminarImagenesIds, ...datos } = req.body;
+    let body = req.body;
+    if (body["0"] && typeof body["0"] === "object") {
+      body = body["0"];
+    }
+
+    let { tags, eliminarImagenesIds, ubicaciones, ...datos } = body;
 
     const patrimonio = await Patrimonio.findByPk(id);
     if (!patrimonio)
       return res.status(404).json({ error: "Patrimonio no encontrado" });
 
-    // 1. Imagen de portada (sin cambios)
     if (req.files && req.files["portada"]) {
       if (patrimonio.imagen_url) {
-        const oldPath = path.join(__dirname, "..", "..", patrimonio.imagen_url);
+        const cleanPath = patrimonio.imagen_url.startsWith("/")
+          ? patrimonio.imagen_url.substring(1)
+          : patrimonio.imagen_url;
+        const oldPath = path.resolve(process.cwd(), cleanPath);
+
         try {
-          await fs.unlink(oldPath);
+          if (fs.existsSync(oldPath)) await fs.unlink(oldPath);
         } catch (err) {
           console.error("Error al borrar portada", err.message);
         }
@@ -90,44 +127,35 @@ const updatePatrimonio = async (req, res) => {
       datos.imagen_url = `/uploads/patrimonios/${req.files["portada"][0].filename}`;
     }
 
-    // 2. Borrar imágenes de galería (sin cambios)
     if (eliminarImagenesIds) {
-      let idsProcesados = [];
-
+      let idsABorrar = [];
       if (Array.isArray(eliminarImagenesIds)) {
-        idsProcesados = eliminarImagenesIds;
-      } else if (
-        typeof eliminarImagenesIds === "string" &&
-        eliminarImagenesIds.includes(",")
-      ) {
-        idsProcesados = eliminarImagenesIds.split(",");
+        idsABorrar = eliminarImagenesIds;
       } else {
-        idsProcesados = [eliminarImagenesIds];
+        idsABorrar = eliminarImagenesIds
+          .split(",")
+          .map((num) => parseInt(num.trim()));
       }
 
-      const ids = idsProcesados
-        .map((id) => parseInt(id))
-        .filter((id) => !isNaN(id));
+      const imagenesABorrar = await ImagenPatrimonio.findAll({
+        where: { id: idsABorrar, patrimonioId: id },
+      });
 
-      if (ids.length > 0) {
-        const imagenesABorrar = await ImagenPatrimonio.findAll({
-          where: { id: ids, patrimonioId: id },
-        });
-
-        for (const img of imagenesABorrar) {
-          const cleanPath = img.url.startsWith("/") ? img.url.slice(1) : img.url;
-          const filePath = path.resolve(process.cwd(), cleanPath);
-          try {
-            await fs.unlink(filePath);
-          } catch (err) {
-            console.log("No se encontró el archivo en disco, pero se borrará de DB.");
-          }
-          await img.destroy();
+      for (const img of imagenesABorrar) {
+        const filePath = path.resolve(
+          process.cwd(),
+          img.url.startsWith("/") ? img.url.substring(1) : img.url,
+        );
+        try {
+          if (fs.existsSync(filePath)) await fs.unlink(filePath);
+        } catch (err) {
+          console.error("Error disco:", err.message);
         }
+        await img.destroy();
       }
     }
 
-    // 3. Agregar nuevas imágenes a galería (sin cambios)
+    // 3. Agregar nuevas imágenes a galería
     if (req.files && req.files["imagenes"]) {
       const nuevasFotos = req.files["imagenes"].map((file) => ({
         url: `/uploads/patrimonios/${file.filename}`,
@@ -136,59 +164,80 @@ const updatePatrimonio = async (req, res) => {
       await ImagenPatrimonio.bulkCreate(nuevasFotos);
     }
 
-    // --------------------------------------------------------------
-    // 4. Manejo de tags (MEJORADO)
-    // --------------------------------------------------------------
-    // Variable para saber si el campo 'tags' fue explícitamente enviado
-    let tagsEnviado = req.body.hasOwnProperty("tags") || req.body.hasOwnProperty("tags[]");
-
-    // Normalización del contenido de tags
-    let tagsArray = [];
-
-    if (tags !== undefined) {
+    // 4. Manejo de tags
+    let tagsEnviado = "tags" in body || "tags[]" in body;
+    if (tagsEnviado) {
+      let tagsArray = [];
       if (typeof tags === "string") {
-        // Caso: string vacío significa "borrar todos"
-        if (tags === "") {
-          tagsArray = [];
-        } else {
-          tagsArray = tags.split(",").map(t => t.trim()).filter(t => t);
-        }
+        tagsArray = tags
+          ? tags
+              .split(",")
+              .map((t) => t.trim())
+              .filter((t) => t)
+          : [];
       } else if (Array.isArray(tags)) {
-        // Aplanar posibles arrays anidados y limpiar
-        tagsArray = tags.flatMap(item => {
-          if (typeof item === "string") return item.split(",").map(s => s.trim());
-          return item;
-        }).filter(t => t && t !== "");
+        tagsArray = tags
+          .map((t) => {
+            if (typeof t === "string") return t.trim();
+            if (t && typeof t === "object" && t.nombre) return t.nombre.trim();
+            return null;
+          })
+          .filter((t) => t);
+      }
+
+      const instanciasTags = await Promise.all(
+        tagsArray.map((nombre) =>
+          Tag.findOrCreate({ where: { nombre: String(nombre).toLowerCase() } }),
+        ),
+      );
+      await patrimonio.setTags(instanciasTags.map((t) => t[0]));
+    }
+    const camposABorrar = [
+      "municipio",
+      "tags",
+      "galeria",
+      "ubicaciones",
+      "createdAt",
+      "updatedAt",
+    ];
+    camposABorrar.forEach((campo) => delete datos[campo]);
+
+    await patrimonio.update(datos);
+
+    // Manejo de ubicaciones
+    if (ubicaciones) {
+      const uData =
+        typeof ubicaciones === "string" ? JSON.parse(ubicaciones) : ubicaciones;
+      if (Array.isArray(uData)) {
+        await Ubicacion.destroy({ where: { patrimonioId: id } });
+        const nuevasUbicaciones = uData.map((ubi, index) => ({
+          nombre_punto: ubi.nombre_punto,
+          latitud: ubi.latitud,
+          longitud: ubi.longitud,
+          patrimonioId: id,
+          es_principal: index === 0,
+        }));
+        await Ubicacion.bulkCreate(nuevasUbicaciones);
       }
     }
 
-    // Si el campo tags NO fue enviado, no modificamos la relación.
-    // Si fue enviado (incluso como array vacío o string vacío), actualizamos.
-    if (tagsEnviado) {
-      // Buscar o crear instancias de tags (si tagsArray está vacío, se sincroniza con [])
-      const instanciasTags = await Promise.all(
-        tagsArray.map(nombre =>
-          Tag.findOrCreate({ where: { nombre: nombre.toLowerCase() } })
-        )
-      );
-      await patrimonio.setTags(instanciasTags.map(t => t[0]));
-    }
-
-    // 5. Actualizar campos básicos del patrimonio
-    await patrimonio.update(datos);
-
-    // 6. Obtener resultado final con todas las relaciones
     const resultado = await Patrimonio.findByPk(id, {
       include: [
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
         { model: ImagenPatrimonio, as: "galeria" },
+        {
+          model: Ubicacion,
+          as: "ubicaciones",
+          separate: true,
+          order: [["es_principal", "DESC"]],
+        },
       ],
     });
 
     return res.json(resultado);
   } catch (error) {
-    console.error(error);
+    console.error("Error en updatePatrimonio", error);
     return res.status(500).json({ error: error.message });
   }
 };
@@ -261,6 +310,7 @@ const exportarPatrimonios = async (req, res) => {
   try {
     const patrimonios = await Patrimonio.findAll({
       include: [
+        { model: Ubicacion, as: "ubicaciones" },
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
       ],
@@ -311,7 +361,6 @@ const exportarPatrimonios = async (req, res) => {
   }
 };
 
-
 //Exportar datos para el PDF
 const getPatrimonioParaReporte = async (req, res) => {
   try {
@@ -319,9 +368,10 @@ const getPatrimonioParaReporte = async (req, res) => {
 
     const patrimonio = await Patrimonio.findByPk(id, {
       include: [
+        { model: Ubicacion, as: "ubicaciones" },
         { model: Municipio, as: "municipio", attributes: ["nombre"] },
         { model: Tag, as: "tags", through: { attributes: [] } },
-        { model: ImagenPatrimonio, as: "galeria", attributes: ["id", "url"] }
+        { model: ImagenPatrimonio, as: "galeria", attributes: ["id", "url"] },
       ],
     });
 
@@ -329,7 +379,7 @@ const getPatrimonioParaReporte = async (req, res) => {
       return res.status(404).json({ message: "Patrimonio no encontrado" });
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
 
     const dataReporte = {
       id: patrimonio.id,
@@ -338,19 +388,18 @@ const getPatrimonioParaReporte = async (req, res) => {
       descripcion: patrimonio.descripcion,
       coordenadas: {
         lat: patrimonio.latitud,
-        lng: patrimonio.longitud
+        lng: patrimonio.longitud,
       },
       municipio: patrimonio.municipio ? patrimonio.municipio.nombre : "N/A",
-      tags: patrimonio.tags.map(t => t.nombre),
+      tags: patrimonio.tags.map((t) => t.nombre),
       portada: `${baseUrl}${patrimonio.imagen_url}`,
-      galeria: patrimonio.galeria.map(img => ({
+      galeria: patrimonio.galeria.map((img) => ({
         id: img.id,
-        url: `${baseUrl}${img.url}`
-      }))
+        url: `${baseUrl}${img.url}`,
+      })),
     };
 
     res.json(dataReporte);
-
   } catch (error) {
     res.status(500).json({ error: "Error al obtener datos para el reporte" });
   }
@@ -363,5 +412,5 @@ module.exports = {
   updatePatrimonio,
   deletePatrimonio,
   exportarPatrimonios,
-  getPatrimonioParaReporte
+  getPatrimonioParaReporte,
 };

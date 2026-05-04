@@ -26,6 +26,7 @@ router.post(
 //Editar patrimonios y sus imagenes
 router.put(
   "/patrimonios/:id",
+  auth,
   upload.fields([
     { name: "portada", maxCount: 1 },
     { name: "imagenes", maxCount: 10 },

@@ -15,14 +15,6 @@ const Patrimonio = sequelize.define('Patrimonio', {
         type: DataTypes.TEXT,
         allowNull: false
     },
-    latitud: {
-        type: DataTypes.DECIMAL,
-        allowNull: false
-    },
-    longitud: {
-        type: DataTypes.DECIMAL,
-        allowNull: false
-    },
     imagen_url: {
         type: DataTypes.STRING
     },
