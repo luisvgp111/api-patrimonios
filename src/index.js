@@ -14,11 +14,13 @@ const app = express();
 //Limitador de peticiones por IP
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, 
-  max: 100, 
+  max: 100,
+  skip: (req) => req.method === 'OPTIONS', // 👈 ignora preflight
   message: "Demasiadas peticiones desde esta IP, por favor intenta después de 15 minutos",
   standardHeaders: true, 
   legacyHeaders: false,
 });
+
 //Limitador de peticiones para el Login
 const loginLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, 
@@ -26,12 +28,12 @@ const loginLimiter = rateLimit({
   message: "Demasiados intentos de inicio de sesión, cuenta bloqueada temporalmente",
 });
 
+app.use(cors());
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" },
   contentSecurityPolicy: false, 
 }));
-app.use(generalLimiter);
-app.use(cors());
+// app.use(generalLimiter);
 app.use(express.json());
 
 app.use("/api/auth", loginLimiter, authRoutes);

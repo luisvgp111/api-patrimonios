@@ -2,7 +2,8 @@ const { where, Op } = require("sequelize");
 const { Patrimonio, Municipio, Tag, Ubicacion } = require("../models");
 const path = require("path");
 const ImagenPatrimonio = require("../models/ImagenPatrimonio");
-const fs = require("fs");
+const fs = require('fs/promises');   // Importa la versión con promesas
+const fsSync = require('fs');   
 const html_to_pdf = require("html-pdf-node");
 const ExcelJS = require("exceljs");
 
@@ -112,48 +113,47 @@ const updatePatrimonio = async (req, res) => {
       return res.status(404).json({ error: "Patrimonio no encontrado" });
 
     if (req.files && req.files["portada"]) {
-      if (patrimonio.imagen_url) {
-        const cleanPath = patrimonio.imagen_url.startsWith("/")
-          ? patrimonio.imagen_url.substring(1)
-          : patrimonio.imagen_url;
-        const oldPath = path.resolve(process.cwd(), cleanPath);
-
-        try {
-          if (fs.existsSync(oldPath)) await fs.unlink(oldPath);
-        } catch (err) {
-          console.error("Error al borrar portada", err.message);
-        }
+  if (patrimonio.imagen_url) {
+    const cleanPath = patrimonio.imagen_url.startsWith("/")
+      ? patrimonio.imagen_url.substring(1)
+      : patrimonio.imagen_url;
+    const oldPath = path.resolve(process.cwd(), cleanPath);
+    try {
+      if (fsSync.existsSync(oldPath)) {
+        await fs.unlink(oldPath);   // ✅ Ahora sí funciona
       }
-      datos.imagen_url = `/uploads/patrimonios/${req.files["portada"][0].filename}`;
+    } catch (err) {
+      console.error("Error al borrar portada", err.message);
     }
+  }
+  datos.imagen_url = `/uploads/patrimonios/${req.files["portada"][0].filename}`;
+}
 
     if (eliminarImagenesIds) {
-      let idsABorrar = [];
-      if (Array.isArray(eliminarImagenesIds)) {
-        idsABorrar = eliminarImagenesIds;
-      } else {
-        idsABorrar = eliminarImagenesIds
-          .split(",")
-          .map((num) => parseInt(num.trim()));
+  let idsABorrar = Array.isArray(eliminarImagenesIds)
+    ? eliminarImagenesIds
+    : eliminarImagenesIds.split(",").map(num => parseInt(num.trim()));
+    
+  const imagenesABorrar = await ImagenPatrimonio.findAll({
+    where: { id: idsABorrar, patrimonioId: id }
+  });
+  
+  for (const img of imagenesABorrar) {
+    const filePath = path.resolve(
+      process.cwd(),
+      img.url.startsWith("/") ? img.url.substring(1) : img.url
+    );
+    try {
+      if (fsSync.existsSync(filePath)) {
+        await fs.unlink(filePath);
+        console.log("Imagen eliminada del disco:", filePath);
       }
-
-      const imagenesABorrar = await ImagenPatrimonio.findAll({
-        where: { id: idsABorrar, patrimonioId: id },
-      });
-
-      for (const img of imagenesABorrar) {
-        const filePath = path.resolve(
-          process.cwd(),
-          img.url.startsWith("/") ? img.url.substring(1) : img.url,
-        );
-        try {
-          if (fs.existsSync(filePath)) await fs.unlink(filePath);
-        } catch (err) {
-          console.error("Error disco:", err.message);
-        }
-        await img.destroy();
-      }
+    } catch (err) {
+      console.error("Error disco:", err.message);
     }
+    await img.destroy();
+  }
+}
 
     // 3. Agregar nuevas imágenes a galería
     if (req.files && req.files["imagenes"]) {
