@@ -1,9 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 const sequelize = require("./db");
-const adminRoutes = require("./routes/adminRoutes");
-const authRoutes = require("./routes/authRoutes");
-const publicRoutes = require("./routes/publicRoutes");
+const publicRoutes = require('./routes/publicRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const supremoRoutes = require('./routes/supremoRoutes');
+const authRoutes = require('./routes/authRoutes');
 const path = require("path")
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -36,9 +37,10 @@ app.use(helmet({
 // app.use(generalLimiter);
 app.use(express.json());
 
-app.use("/api/auth", loginLimiter, authRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api", publicRoutes)
+app.use('/api', publicRoutes);        // Rutas públicas (patrimonios, municipios, tags, reporte PDF)
+app.use('/api/admin', adminRoutes);   // Gestión de patrimonios y tags (requiere admin/supremo)
+app.use('/api/supremo', supremoRoutes); // Gestión de admins (solo supremo)
+app.use('/api/auth', authRoutes);  
 
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 

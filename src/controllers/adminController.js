@@ -361,56 +361,11 @@ const exportarPatrimonios = async (req, res) => {
   }
 };
 
-//Exportar datos para el PDF
-const getPatrimonioParaReporte = async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const patrimonio = await Patrimonio.findByPk(id, {
-      include: [
-        { model: Ubicacion, as: "ubicaciones" },
-        { model: Municipio, as: "municipio", attributes: ["nombre"] },
-        { model: Tag, as: "tags", through: { attributes: [] } },
-        { model: ImagenPatrimonio, as: "galeria", attributes: ["id", "url"] },
-      ],
-    });
-
-    if (!patrimonio) {
-      return res.status(404).json({ message: "Patrimonio no encontrado" });
-    }
-
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
-
-    const dataReporte = {
-      id: patrimonio.id,
-      nombre: patrimonio.nombre,
-      categoria: patrimonio.categoria,
-      descripcion: patrimonio.descripcion,
-      coordenadas: {
-        lat: patrimonio.latitud,
-        lng: patrimonio.longitud,
-      },
-      municipio: patrimonio.municipio ? patrimonio.municipio.nombre : "N/A",
-      tags: patrimonio.tags.map((t) => t.nombre),
-      portada: `${baseUrl}${patrimonio.imagen_url}`,
-      galeria: patrimonio.galeria.map((img) => ({
-        id: img.id,
-        url: `${baseUrl}${img.url}`,
-      })),
-    };
-
-    res.json(dataReporte);
-  } catch (error) {
-    res.status(500).json({ error: "Error al obtener datos para el reporte" });
-  }
-};
-
 module.exports = {
   updateTag,
   deleteTag,
   createPatrimonio,
   updatePatrimonio,
   deletePatrimonio,
-  exportarPatrimonios,
-  getPatrimonioParaReporte,
+  exportarPatrimonios
 };

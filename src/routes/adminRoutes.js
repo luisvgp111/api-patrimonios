@@ -2,46 +2,36 @@ const express = require("express");
 const router = express.Router();
 const adminController = require("../controllers/adminController");
 const auth = require("../middlewares/authMiddleware");
-const publicController = require("../controllers/publicController");
+const { isAdmin } = require("../middlewares/roleMiddleware");
 const upload = require("../middlewares/upload");
 
-//      Rutas privadas
-router.get("/exportar-excel", auth, adminController.exportarPatrimonios)
+// Todas estas rutas requieren autenticación y rol de administrador (admin o supremo)
+router.use(auth, isAdmin);
 
-// El admin hace uso de la lista de municipios al momento de registrar un patrimonio
-router.get("/municipios", auth, publicController.getMunicipios);
-router.get("/patrimonios", publicController.getAllPatrimonios);
-router.get("/patrimonios/:id", publicController.getPatrimonioById);
+// Exportar Excel
+router.get("/exportar-excel", adminController.exportarPatrimonios);
 
-// Acciones del CRUD para patrimonios
+// CRUD de patrimonios
 router.post(
   "/patrimonios",
-  auth,
   upload.fields([
     { name: "portada", maxCount: 1 },
     { name: "imagenes", maxCount: 10 },
   ]),
-  adminController.createPatrimonio,
+  adminController.createPatrimonio
 );
-//Editar patrimonios y sus imagenes
 router.put(
   "/patrimonios/:id",
-  auth,
   upload.fields([
     { name: "portada", maxCount: 1 },
     { name: "imagenes", maxCount: 10 },
   ]),
-  adminController.updatePatrimonio,
+  adminController.updatePatrimonio
 );
+router.delete("/patrimonios/:id", adminController.deletePatrimonio);
 
-router.delete("/patrimonios/:id", auth, adminController.deletePatrimonio);
-
-//Acciones para Tags
-router.get("/tags", publicController.getAllTags);
-router.put("/tags/:id", auth, adminController.updateTag);
-router.delete("/tags/:id", auth, adminController.deleteTag);
-
-//Exportar a PDF
-router.get('/patrimonios/:id/reporte', adminController.getPatrimonioParaReporte);
+// Gestión de tags
+router.put("/tags/:id", adminController.updateTag);
+router.delete("/tags/:id", adminController.deleteTag);
 
 module.exports = router;
