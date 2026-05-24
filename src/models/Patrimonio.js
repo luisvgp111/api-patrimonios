@@ -1,4 +1,5 @@
-const {DataTypes} = require('sequelize');
+// models/Patrimonio.js (actualización)
+const { DataTypes } = require('sequelize');
 const sequelize = require('../db');
 
 const Patrimonio = sequelize.define('Patrimonio', {
@@ -22,8 +23,13 @@ const Patrimonio = sequelize.define('Patrimonio', {
         type: DataTypes.INTEGER,
         allowNull: false,
         validate: {
-            notNull: {msg: "Debes agregar un municipio"}
+            notNull: { msg: "Debes agregar un municipio" }
         }
+    },
+    estado: {
+        type: DataTypes.ENUM('pendiente', 'registrado'),
+        defaultValue: 'pendiente',
+        allowNull: false
     }
 });
 

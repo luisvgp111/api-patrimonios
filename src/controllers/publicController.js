@@ -7,43 +7,30 @@ const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 //Obtener todos los patrimonios
 const getAllPatrimonios = async (req, res) => {
   try {
-    const { categoria, tag } = req.query; //Estas se usan en la url, ejemplo: ".../api/patrimonios?categoria=Material&tag=nombreDelTag"
-
-    const whereConditions = {};
-
+    const { categoria, tag } = req.query;
+    const whereConditions = { estado: 'registrado' };  // ← filtro crítico
     const categoriasValidas = ['Material', 'Inmaterial', 'Biocultural'];
-
-    if (categoria && categoriasValidas.includes(categoria)){
-        whereConditions.categoria = categoria;
+    if (categoria && categoriasValidas.includes(categoria)) {
+      whereConditions.categoria = categoria;
     }
 
     const patrimonios = await Patrimonio.findAll({
-        where: whereConditions,
-        include: [
-            {model: Municipio, as: "municipio"},
-            {
-                model: Tag,
-                as: "tags",
-                through: {attributes: []},
-                ...(tag && {
-                    where: {nombre: {[Op.iLike]: `%${tag}%`}},
-                    required: true
-                })
-            },
-            {
-              model: ImagenPatrimonio,
-              as: "galeria"
-            },
-            {
-              model: Ubicacion,
-              as: "ubicaciones"
-            }
-        ],
-        order: [["nombre", "ASC"]]
-    })
+      where: whereConditions,
+      include: [
+        { model: Municipio, as: "municipio" },
+        {
+          model: Tag,
+          as: "tags",
+          through: { attributes: [] },
+          ...(tag && { where: { nombre: { [Op.iLike]: `%${tag}%` } }, required: true })
+        },
+        { model: ImagenPatrimonio, as: "galeria" },
+        { model: Ubicacion, as: "ubicaciones" }
+      ],
+      order: [["nombre", "ASC"]]
+    });
 
     return res.status(200).json(patrimonios);
-
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -53,31 +40,17 @@ const getAllPatrimonios = async (req, res) => {
 const getPatrimonioById = async (req, res) => {
   try {
     const { id } = req.params;
-    const patrimonio = await Patrimonio.findByPk(id, {
+    const patrimonio = await Patrimonio.findOne({
+      where: { id, estado: 'registrado' },   
       include: [
-        {
-          model: Municipio,
-          as: "municipio",
-          attributes: ["id", "nombre"],
-        },
-        {
-          model: Tag,
-          as: "tags",
-          through: { attributes: [] },
-        },
-        {
-          model: ImagenPatrimonio,
-          as: "galeria"
-        },
-        {
-          model: Ubicacion,
-          as: "ubicaciones"
-        }
-      ],
+        { model: Municipio, as: "municipio", attributes: ["id", "nombre"] },
+        { model: Tag, as: "tags", through: { attributes: [] } },
+        { model: ImagenPatrimonio, as: "galeria" },
+        { model: Ubicacion, as: "ubicaciones" }
+      ]
     });
 
-    if (!patrimonio) return res.status(404).json({error: "No encontrado"});
-    
+    if (!patrimonio) return res.status(404).json({ error: "No encontrado" });
     return res.json(patrimonio);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -102,7 +75,7 @@ const getMunicipios = async (req, res) => {
 const getMunicipiosConPatrimonios = async (req, res) => {
   try {
     const { id } = req.params;
-    const { tag, categoria } = req.query; //Ejemplo de uso ".../api/municipios/1?tag=nombreDelTag"
+    const { tag, categoria } = req.query;
 
     const municipio = await Municipio.findByPk(id, {
       include: [
@@ -110,7 +83,8 @@ const getMunicipiosConPatrimonios = async (req, res) => {
           model: Patrimonio,
           as: "patrimonios",
           where: {
-            ...(categoria && {categoria})
+            estado: 'registrado',       
+            ...(categoria && { categoria })
           },
           required: categoria ? true : false,
           include: [
@@ -118,23 +92,15 @@ const getMunicipiosConPatrimonios = async (req, res) => {
               model: Tag,
               as: "tags",
               through: { attributes: [] },
-              ...(tag && {
-                where: {
-                  nombre: { [Op.iLike]: `%${tag.trim()}%` },
-                },
-                required: true,
-              }),
-            },
-          ],
-        },
+              ...(tag && { where: { nombre: { [Op.iLike]: `%${tag.trim()}%` } }, required: true })
+            }
+          ]
+        }
       ],
-      order: [[{ model: Patrimonio, as: "patrimonios" }, "nombre", "ASC"]],
+      order: [[{ model: Patrimonio, as: "patrimonios" }, "nombre", "ASC"]]
     });
 
-    if (!municipio) {
-      return res.status(404).json({ mensaje: "Municipio no encontrado" });
-    }
-
+    if (!municipio) return res.status(404).json({ mensaje: "Municipio no encontrado" });
     return res.json(municipio);
   } catch (error) {
     res.status(500).json({ error: error.message });
