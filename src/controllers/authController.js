@@ -2,7 +2,6 @@ const Usuario = require("../models/Usuario");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
-// authController.js (fragmento)
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -15,7 +14,6 @@ const login = async (req, res) => {
             return res.status(401).json({ mensaje: "Credenciales incorrectas" });
         }
 
-        // INCLUIR EL ROL EN EL PAYLOAD
         const token = jwt.sign(
             { id: usuario.id, nombre: usuario.nombre, rol: usuario.rol },
             "PALABRA_CIFRADA",

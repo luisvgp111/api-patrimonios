@@ -1,4 +1,3 @@
-// models/Patrimonio.js (actualización)
 const { DataTypes } = require('sequelize');
 const sequelize = require('../db');
 

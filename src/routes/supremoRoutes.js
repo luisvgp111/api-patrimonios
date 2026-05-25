@@ -6,7 +6,6 @@ const adminManagementController = require("../controllers/adminManagementControl
 
 router.use(auth, isSupremo);
 
-// CRUD de administradores (solo rol 'admin_supremo' puede acceder)
 router.get("/admins", adminManagementController.listarAdmins);
 router.get("/admins/:id", adminManagementController.getAdminById);
 router.post("/admins", adminManagementController.crearAdmin);

@@ -1,8 +1,6 @@
 const sequelize = require("./src/db");
 const Municipio = require("./src/models/Municipio");
 
-//Este archivo fue utilizado para realizar la insercion de los 72 municipios en la tabla "Municipios"
-
 const seedMunicipios = async () => {
   const municipios = [
     { nombre: "Aconchi", latitud: 29.8253, longitud: -110.2247 },

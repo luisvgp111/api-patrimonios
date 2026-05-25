@@ -1,28 +1,22 @@
 const { where, Op } = require("sequelize");
-const { Patrimonio, Municipio, Tag, Ubicacion } = require("../models");
+const { Patrimonio, Municipio, Tag, Ubicacion, ImagenPatrimonio, Link } = require("../models");
 const path = require("path");
-const ImagenPatrimonio = require("../models/ImagenPatrimonio");
-const fs = require('fs/promises');   // Importa la versión con promesas
+const fs = require('fs/promises');
 const fsSync = require('fs');   
-const html_to_pdf = require("html-pdf-node");
 const ExcelJS = require("exceljs");
 
-// Crear patrimonio – siempre se crea con estado 'pendiente'
 const createPatrimonio = async (req, res) => {
   try {
-    let { tags, ubicaciones, ...datos } = req.body;
+    let { tags, ubicaciones, links, ...datos } = req.body;
 
-    // FORZAR estado a 'pendiente' (ignorar lo que venga en la petición)
     datos.estado = 'pendiente';
 
-    // Manejo de portada
     if (req.files && req.files["portada"]) {
       datos.imagen_url = `/uploads/patrimonios/${req.files["portada"][0].filename}`;
     }
 
     const nuevo = await Patrimonio.create(datos);
 
-    // Ubicaciones (igual que antes)
     if (ubicaciones) {
       const ubicacionesData = typeof ubicaciones === "string" ? JSON.parse(ubicaciones) : ubicaciones;
       if (Array.isArray(ubicacionesData) && ubicacionesData.length > 0) {
@@ -37,7 +31,6 @@ const createPatrimonio = async (req, res) => {
       }
     }
 
-    // Galería
     if (req.files && req.files["imagenes"]) {
       const imagenesGaleria = req.files["imagenes"].map((file) => ({
         url: `/uploads/patrimonios/${file.filename}`,
@@ -46,7 +39,6 @@ const createPatrimonio = async (req, res) => {
       await ImagenPatrimonio.bulkCreate(imagenesGaleria);
     }
 
-    // Tags
     if (tags) {
       if (typeof tags === "string") {
         tags = tags.split(",").map((t) => t.trim());
@@ -61,12 +53,25 @@ const createPatrimonio = async (req, res) => {
       }
     }
 
+    if (links) {
+      let linksArray = typeof links === 'string' ? JSON.parse(links) : links;
+      if (Array.isArray(linksArray) && linksArray.length) {
+        const linksParaGuardar = linksArray.map(link => ({
+          titulo: link.titulo,
+          url: link.url,
+          patrimonioId: nuevo.id
+        }));
+        await Link.bulkCreate(linksParaGuardar);
+      }
+    }
+
     const resultado = await Patrimonio.findByPk(nuevo.id, {
       include: [
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
         { model: ImagenPatrimonio, as: "galeria" },
-        { model: Ubicacion, as: "ubicaciones", separate: true, order: [["es_principal", "DESC"], ["id", "ASC"]] }
+        { model: Ubicacion, as: "ubicaciones", separate: true, order: [["es_principal", "DESC"], ["id", "ASC"]] },
+        { model: Link, as: "links" }
       ]
     });
 
@@ -76,24 +81,19 @@ const createPatrimonio = async (req, res) => {
   }
 };
 
-// Actualizar patrimonio – solo admin_supremo puede modificar el estado
 const updatePatrimonio = async (req, res) => {
   try {
     const { id } = req.params;
     let body = req.body;
     if (body["0"] && typeof body["0"] === "object") body = body["0"];
 
-    let { tags, eliminarImagenesIds, ubicaciones, ...datos } = body;
+    let { tags, eliminarImagenesIds, ubicaciones, links, ...datos } = body;
 
     const patrimonio = await Patrimonio.findByPk(id);
     if (!patrimonio) return res.status(404).json({ error: "Patrimonio no encontrado" });
 
-    // ⚠️ CONTROL DE ESTADO: si el usuario NO es supremo, eliminar 'estado' del objeto datos
-    if (req.usuario.rol !== 'admin_supremo') {
-      delete datos.estado;
-    }
+    if (req.usuario.rol !== 'admin_supremo') delete datos.estado;
 
-    // Portada (igual)
     if (req.files && req.files["portada"]) {
       if (patrimonio.imagen_url) {
         const cleanPath = patrimonio.imagen_url.startsWith("/") ? patrimonio.imagen_url.substring(1) : patrimonio.imagen_url;
@@ -105,7 +105,6 @@ const updatePatrimonio = async (req, res) => {
       datos.imagen_url = `/uploads/patrimonios/${req.files["portada"][0].filename}`;
     }
 
-    // Eliminar imágenes de galería
     if (eliminarImagenesIds) {
       let idsABorrar = Array.isArray(eliminarImagenesIds) ? eliminarImagenesIds : eliminarImagenesIds.split(",").map(num => parseInt(num.trim()));
       const imagenesABorrar = await ImagenPatrimonio.findAll({ where: { id: idsABorrar, patrimonioId: id } });
@@ -116,7 +115,6 @@ const updatePatrimonio = async (req, res) => {
       }
     }
 
-    // Agregar nuevas imágenes a galería
     if (req.files && req.files["imagenes"]) {
       const nuevasFotos = req.files["imagenes"].map((file) => ({
         url: `/uploads/patrimonios/${file.filename}`,
@@ -125,7 +123,6 @@ const updatePatrimonio = async (req, res) => {
       await ImagenPatrimonio.bulkCreate(nuevasFotos);
     }
 
-    // Manejo de tags
     let tagsEnviado = "tags" in body || "tags[]" in body;
     if (tagsEnviado) {
       let tagsArray = [];
@@ -142,13 +139,11 @@ const updatePatrimonio = async (req, res) => {
       await patrimonio.setTags(instanciasTags.map(t => t[0]));
     }
 
-    // Limpiar campos que no deben actualizarse directamente
-    const camposABorrar = ["municipio", "tags", "galeria", "ubicaciones", "createdAt", "updatedAt"];
+    const camposABorrar = ["municipio", "tags", "galeria", "ubicaciones", "createdAt", "updatedAt", "links"];
     camposABorrar.forEach(campo => delete datos[campo]);
 
     await patrimonio.update(datos);
 
-    // Manejo de ubicaciones
     if (ubicaciones) {
       const uData = typeof ubicaciones === "string" ? JSON.parse(ubicaciones) : ubicaciones;
       if (Array.isArray(uData)) {
@@ -164,12 +159,26 @@ const updatePatrimonio = async (req, res) => {
       }
     }
 
+    if (links !== undefined) {
+      let linksArray = typeof links === 'string' ? JSON.parse(links) : links;
+      await Link.destroy({ where: { patrimonioId: id } });
+      if (Array.isArray(linksArray) && linksArray.length) {
+        const nuevosLinks = linksArray.map(link => ({
+          titulo: link.titulo,
+          url: link.url,
+          patrimonioId: id
+        }));
+        await Link.bulkCreate(nuevosLinks);
+      }
+    }
+
     const resultado = await Patrimonio.findByPk(id, {
       include: [
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
         { model: ImagenPatrimonio, as: "galeria" },
-        { model: Ubicacion, as: "ubicaciones", separate: true, order: [["es_principal", "DESC"]] }
+        { model: Ubicacion, as: "ubicaciones", separate: true, order: [["es_principal", "DESC"]] },
+        { model: Link, as: "links" }
       ]
     });
 
@@ -180,19 +189,50 @@ const updatePatrimonio = async (req, res) => {
   }
 };
 
-// Eliminar patrimonio (sin cambios)
 const deletePatrimonio = async (req, res) => {
   try {
     const { id } = req.params;
-    const borrado = await Patrimonio.destroy({ where: { id } });
-    if (borrado) return res.status(200).json({ message: "Patrimonio eliminado" });
-    else res.status(404).json({ error: "No se encontró el registro" });
+
+    const patrimonio = await Patrimonio.findByPk(id, {
+      include: [{ model: ImagenPatrimonio, as: 'galeria' }]
+    });
+
+    if (!patrimonio) {
+      return res.status(404).json({ error: "No se encontró el registro" });
+    }
+
+    const eliminarArchivo = async (url) => {
+      if (!url) return;
+      const cleanPath = url.startsWith('/') ? url.substring(1) : url;
+      const filePath = path.resolve(process.cwd(), cleanPath);
+      try {
+        await fs.access(filePath); 
+        await fs.unlink(filePath);
+        console.log(`Archivo eliminado: ${filePath}`);
+      } catch (err) {
+        if (err.code !== 'ENOENT') {
+          console.error(`Error al eliminar ${filePath}:`, err.message);
+        }
+      }
+    };
+
+    await eliminarArchivo(patrimonio.imagen_url);
+
+    if (patrimonio.galeria && Array.isArray(patrimonio.galeria)) {
+      for (const imagen of patrimonio.galeria) {
+        await eliminarArchivo(imagen.url);
+      }
+    }
+
+    await patrimonio.destroy();
+
+    return res.status(200).json({ message: "Patrimonio eliminado junto con sus imágenes" });
   } catch (error) {
+    console.error("Error en deletePatrimonio:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// 🔁 OBTENER TODOS LOS PATRIMONIOS (para dashboard/admin) – incluye pendientes y registrados
 const getAllPatrimoniosAdmin = async (req, res) => {
   try {
     const patrimonios = await Patrimonio.findAll({
@@ -200,7 +240,8 @@ const getAllPatrimoniosAdmin = async (req, res) => {
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
         { model: ImagenPatrimonio, as: "galeria" },
-        { model: Ubicacion, as: "ubicaciones" }
+        { model: Ubicacion, as: "ubicaciones" },
+        { model: Link, as: "links" }
       ],
       order: [["nombre", "ASC"]]
     });
@@ -210,7 +251,6 @@ const getAllPatrimoniosAdmin = async (req, res) => {
   }
 };
 
-// ✅ CAMBIAR ESTADO DE UN PATRIMONIO (solo admin_supremo)
 const cambiarEstadoPatrimonio = async (req, res) => {
   try {
     const { id } = req.params;
@@ -232,16 +272,12 @@ const cambiarEstadoPatrimonio = async (req, res) => {
   }
 };
 
-//    Endpoints de gestion, Tags (ADMINISTRADOR)
-
-//Editar Tag
 const updateTag = async (req, res) => {
   try {
     const { id } = req.params;
     const { nombre } = req.body;
 
-    if (!nombre)
-      return res.status(400).json({ error: "El nombre es requerido" });
+    if (!nombre) return res.status(400).json({ error: "El nombre es requerido" });
 
     const tag = await Tag.findByPk(id);
     if (!tag) return res.status(404).json({ error: "Tag no encontrado" });
@@ -255,16 +291,13 @@ const updateTag = async (req, res) => {
   }
 };
 
-//Eliminar Tag
 const deleteTag = async (req, res) => {
   try {
     const { id } = req.params;
 
     const tag = await Tag.findByPk(id);
     if (!tag) {
-      return res
-        .status(400)
-        .json({ error: "El tag ya no existe en la base de datos" });
+      return res.status(400).json({ error: "El tag ya no existe en la base de datos" });
     }
 
     await tag.destroy();
@@ -273,13 +306,10 @@ const deleteTag = async (req, res) => {
       mensaje: `Tag '${tag.nombre}' eliminado globalmente con éxito.`,
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ error: "Error al eliminar Tag: " + error.message });
+    return res.status(500).json({ error: "Error al eliminar Tag: " + error.message });
   }
 };
 
-//Exportar los patrimonios a excel
 const exportarPatrimonios = async (req, res) => {
   try {
     const patrimonios = await Patrimonio.findAll({
@@ -287,6 +317,7 @@ const exportarPatrimonios = async (req, res) => {
         { model: Ubicacion, as: "ubicaciones" },
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
+        { model: Link, as: "links" }
       ],
     });
 
@@ -302,20 +333,23 @@ const exportarPatrimonios = async (req, res) => {
       { header: "Tags", key: "tags", width: 30 },
       { header: "Longitud", key: "longitud", width: 30 },
       { header: "Latitud", key: "latitud", width: 30 },
+      { header: "Links", key: "links", width: 40 },
     ];
 
     worksheet.getRow(1).font = { bold: true };
 
     patrimonios.forEach((p) => {
+      const principal = p.ubicaciones?.find(u => u.es_principal) || p.ubicaciones?.[0];
       worksheet.addRow({
         id: p.id,
         nombre: p.nombre,
         categoria: p.categoria,
         municipio: p.municipio ? p.municipio.nombre : "N/A",
         descripcion: p.descripcion,
-        tags: p.tags.map((t) => t.nombre).join(", "),
-        longitud: p.longitud,
-        latitud: p.latitud,
+        tags: p.tags?.map((t) => t.nombre).join(", ") || "",
+        longitud: principal?.longitud || "",
+        latitud: principal?.latitud || "",
+        links: p.links?.map(l => `${l.titulo}: ${l.url}`).join("; ") || "",
       });
     });
 
@@ -342,6 +376,6 @@ module.exports = {
   updatePatrimonio,
   deletePatrimonio,
   exportarPatrimonios,
-  getAllPatrimoniosAdmin,      
-  cambiarEstadoPatrimonio      
+  getAllPatrimoniosAdmin,
+  cambiarEstadoPatrimonio
 };

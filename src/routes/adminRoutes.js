@@ -8,13 +8,8 @@ const upload = require("../middlewares/upload");
 router.use(auth, isAdmin);
 
 router.get("/patrimonios", adminController.getAllPatrimoniosAdmin);
-
 router.patch("/patrimonios/:id/estado", isSupremo, adminController.cambiarEstadoPatrimonio);
-
-// Exportar Excel
 router.get("/exportar-excel", adminController.exportarPatrimonios);
-
-// CRUD patrimonios
 router.post(
   "/patrimonios",
   upload.fields([{ name: "portada", maxCount: 1 }, { name: "imagenes", maxCount: 10 }]),
@@ -27,7 +22,7 @@ router.put(
 );
 router.delete("/patrimonios/:id", adminController.deletePatrimonio);
 
-// Gestión de tags
+
 router.put("/tags/:id", adminController.updateTag);
 router.delete("/tags/:id", adminController.deleteTag);
 
