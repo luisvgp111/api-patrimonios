@@ -6,7 +6,7 @@ const getAllPatrimonios = async (req, res) => {
   try {
     const { categoria, tag } = req.query;
     const whereConditions = { estado: 'registrado' };
-    const categoriasValidas = ['Material', 'Inmaterial', 'Biocultural'];
+    const categoriasValidas = ['Material', 'Inmaterial', 'Natural'];
     if (categoria && categoriasValidas.includes(categoria)) {
       whereConditions.categoria = categoria;
     }
