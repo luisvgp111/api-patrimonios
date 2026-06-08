@@ -5,6 +5,7 @@ const publicRoutes = require('./routes/publicRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const supremoRoutes = require('./routes/supremoRoutes');
 const authRoutes = require('./routes/authRoutes');
+const contactRoutes = require('./routes/contactRoutes');
 const path = require("path")
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -38,6 +39,7 @@ app.use('/api', publicRoutes);
 app.use('/api/admin', adminRoutes);   
 app.use('/api/supremo', supremoRoutes); 
 app.use('/api/auth', authRoutes);  
+app.use('/api', contactRoutes);  
 
 app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 
