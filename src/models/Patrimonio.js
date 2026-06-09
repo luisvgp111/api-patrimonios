@@ -7,7 +7,7 @@ const Patrimonio = sequelize.define('Patrimonio', {
         allowNull: false
     },
     categoria: {
-        type: DataTypes.ENUM('Material', 'Inmaterial', 'Biocultural'),
+        type: DataTypes.ENUM('Material', 'Inmaterial', 'Natural'),
         allowNull: false,
         defaultValue: 'Material'
     },

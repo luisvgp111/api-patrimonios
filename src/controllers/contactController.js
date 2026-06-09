@@ -1,5 +1,6 @@
 const { enviarCorreoContacto } = require('../services/emailService');
 
+//Controller de contacto para el formulario de contacto en la página pública.
 /**
  * Validar que el correo tenga un formato válido
  * @param {string} correo

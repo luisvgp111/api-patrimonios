@@ -2,11 +2,12 @@ const { where, Op } = require("sequelize");
 const { Tag, Municipio, Patrimonio, Ubicacion, Link } = require("../models");
 const ImagenPatrimonio = require("../models/ImagenPatrimonio");
 
+//Controller para los usuarios normales
 const getAllPatrimonios = async (req, res) => {
   try {
     const { categoria, tag } = req.query;
     const whereConditions = { estado: 'registrado' };
-    const categoriasValidas = ['Material', 'Inmaterial', 'Biocultural'];
+    const categoriasValidas = ['Material', 'Inmaterial', 'Natural'];
     if (categoria && categoriasValidas.includes(categoria)) {
       whereConditions.categoria = categoria;
     }

@@ -1,6 +1,7 @@
 const Usuario = require("../models/Usuario");
 const bcrypt = require("bcryptjs");
 
+//Controller par la gestion de administradores(CRUD) para admin supremo
 const listarAdmins = async (req, res) => {
     try {
         const admins = await Usuario.findAll({

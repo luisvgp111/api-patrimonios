@@ -5,6 +5,7 @@ const fs = require('fs/promises');
 const fsSync = require('fs');   
 const ExcelJS = require("exceljs");
 
+//Controller de la gestion de patrimonios para administradores.
 const createPatrimonio = async (req, res) => {
   try {
     let { tags, ubicaciones, links, ...datos } = req.body;

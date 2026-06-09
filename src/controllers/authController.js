@@ -2,6 +2,7 @@ const Usuario = require("../models/Usuario");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
+//Controller de autenticacion para administradores y super admin.
 const login = async (req, res) => {
     try {
         const { email, password } = req.body;
