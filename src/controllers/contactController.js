@@ -1,98 +1,105 @@
-const { enviarCorreoContacto } = require('../services/emailService');
+require('dotenv').config();
+const nodemailer = require("nodemailer");
 
-//Controller de contacto para el formulario de contacto en la página pública.
-/**
- * Validar que el correo tenga un formato válido
- * @param {string} correo
- * @returns {boolean}
- */
 const validarCorreo = (correo) => {
   const regexCorreo = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return regexCorreo.test(correo);
 };
 
-/**
- * Enviar formulario de contacto
- * @param {Object} req - Objeto de solicitud
- * @param {Object} res - Objeto de respuesta
- */
-const enviarContacto = async (req, res) => {
+const procesarContacto = async (req, res) => {
   try {
     const { nombre, correo, telefono, mensaje } = req.body;
 
-    // Validación: mensaje obligatorio
     if (!mensaje || !mensaje.trim()) {
-      return res.status(400).json({
-        error: 'El campo mensaje es obligatorio',
-        campo: 'mensaje'
-      });
+      return res.status(400).json({ ok: false, msg: 'El campo mensaje es obligatorio', campo: 'mensaje' });
     }
-
-    // Validación de longitud del mensaje
     if (mensaje.length > 5000) {
-      return res.status(400).json({
-        error: 'El mensaje no puede exceder 5000 caracteres',
-        campo: 'mensaje'
-      });
+      return res.status(400).json({ ok: false, msg: 'El mensaje no puede exceder 5000 caracteres', campo: 'mensaje' });
     }
-
-    // Validación de correo si se proporciona
-    if (correo && correo.trim()) {
-      if (!validarCorreo(correo)) {
-        return res.status(400).json({
-          error: 'El formato del correo no es válido',
-          campo: 'correo'
-        });
-      }
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ ok: false, msg: 'Por favor ingresa tu nombre completo.', campo: 'nombre' });
     }
-
-    // Validación de longitud para nombre si se proporciona
-    if (nombre && nombre.length > 100) {
-      return res.status(400).json({
-        error: 'El nombre no puede exceder 100 caracteres',
-        campo: 'nombre'
-      });
+    if (nombre.length > 100) {
+      return res.status(400).json({ ok: false, msg: 'El nombre no puede exceder 100 caracteres', campo: 'nombre' });
     }
-
-    // Validación de longitud para teléfono si se proporciona
-    if (telefono && telefono.length > 20) {
-      return res.status(400).json({
-        error: 'El teléfono no puede exceder 20 caracteres',
-        campo: 'telefono'
-      });
+    if (!correo || !correo.trim()) {
+      return res.status(400).json({ ok: false, msg: 'Por favor ingresa tu correo electrónico.', campo: 'correo' });
     }
+    if (!validarCorreo(correo.trim())) {
+      return res.status(400).json({ ok: false, msg: 'El formato del correo no es válido', campo: 'correo' });
+    }
+    if (telefono && telefono.trim()) {
+          const regexSoloNumeros = /^\d+$/;
 
-    // Preparar datos para enviar correo
-    const datosContacto = {
-      nombre: nombre ? nombre.trim() : '',
-      correo: correo ? correo.trim() : '',
-      telefono: telefono ? telefono.trim() : '',
-      mensaje: mensaje.trim()
+          if (!regexSoloNumeros.test(telefono.trim())) {
+            return res.status(400).json({ 
+              ok: false, 
+              msg: 'El campo teléfono solo debe contener números sin espacios ni símbolos.', 
+              campo: 'telefono' 
+            });
+          }
+
+          if (telefono.trim().length > 20) {
+            return res.status(400).json({ 
+              ok: false, 
+              msg: 'El teléfono no puede exceder 20 caracteres', 
+              campo: 'telefono' 
+            });
+          }
+        }
+        
+
+    const nombreLimpio = nombre.trim();
+    const correoLimpio = correo.trim();
+    const telefonoLimpio = telefono ? telefono.trim() : "No proporcionado";
+    const mensajeLimpio = mensaje.trim();
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT) || 587,
+      secure: false,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: '"Patrimonio Sonorense"',  //Al lado de "Patrimonio sonorense, debe ir un correo. Ejem: '"Patrimonio Sonorense" <correo@gmail.com>'
+      to: process.env.EMAIL_RECEIVER,
+      replyTo: correoLimpio,
+      subject: `Nueva sugerencia de: ${nombreLimpio}`,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+            <h2 style="color: #1a5f42;">Nueva sugerencia.</h2>
+            <p><strong>Nombre:</strong> ${nombreLimpio}</p>
+            <p><strong>Correo de contacto:</strong> ${correoLimpio}</p>
+            <p><strong>Teléfono:</strong> ${telefonoLimpio}</p>
+            <hr style="border:0; border-top: 1px solid #eee;" />
+            <p><strong>Sugerencia aportada:</strong></p>  
+            <p style="background-color: #f9f9f9; padding: 15px; border-left: 4px solid #1a5f42;">
+                ${mensajeLimpio.replace(/\n/g, "<br>")}
+            </p>
+        </div>
+      `,
     };
 
-    // Enviar correo
-    const resultado = await enviarCorreoContacto(datosContacto);
+    await transporter.sendMail(mailOptions);
 
-    if (!resultado.exitoso) {
-      return res.status(500).json({
-        error: 'No fue posible procesar tu solicitud en este momento. Por favor, intenta más tarde.'
-      });
-    }
-
-    // Respuesta exitosa
     return res.status(200).json({
-      mensaje: 'Tu solicitud ha sido recibida. Nos pondremos en contacto pronto.',
-      id: resultado.id
+      ok: true,
+      msg: "Mensaje enviado correctamente. Gracias por tu sugerencia.",
     });
 
   } catch (error) {
-    console.error('Error en enviarContacto:', error);
+    console.error("Error al enviar el correo:", error);
     return res.status(500).json({
-      error: 'Error interno del servidor'
+      ok: false,
+      msg: "Ocurrió un error al procesar tu solicitud.",
+      error: error.message
     });
   }
 };
 
 module.exports = {
-  enviarContacto
+  procesarContacto
 };

@@ -27,6 +27,6 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = {
+module.exports = {  
     login
 }
