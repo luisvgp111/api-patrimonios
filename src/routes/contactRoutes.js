@@ -7,6 +7,6 @@ const contactController = require('../controllers/contactController');
  * Recibir solicitudes de contacto del formulario
  * Body: { nombre, correo, telefono, mensaje }
  */
-router.post('/contacto', contactController.enviarContacto);
+router.post('/contacto', contactController.procesarContacto);
 
 module.exports = router;
