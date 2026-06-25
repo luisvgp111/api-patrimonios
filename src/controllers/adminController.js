@@ -236,7 +236,12 @@ const deletePatrimonio = async (req, res) => {
 
 const getAllPatrimoniosAdmin = async (req, res) => {
   try {
-    const patrimonios = await Patrimonio.findAll({
+
+    const page = parseInt(req.query.page) || 1;     
+    const limit = parseInt(req.query.limit) || 10;    
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await Patrimonio.findAndCountAll({
       include: [
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
@@ -244,9 +249,18 @@ const getAllPatrimoniosAdmin = async (req, res) => {
         { model: Ubicacion, as: "ubicaciones" },
         { model: Link, as: "links" }
       ],
-      order: [["nombre", "ASC"]]
+      order: [["nombre", "ASC"]],
+      limit: limit,
+      offset: offset
     });
-    return res.status(200).json(patrimonios);
+
+    return res.status(200).json({
+      patrimonios: rows,
+      totalItems: count,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+      limit: limit
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
