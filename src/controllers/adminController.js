@@ -236,9 +236,8 @@ const deletePatrimonio = async (req, res) => {
 
 const getAllPatrimoniosAdmin = async (req, res) => {
   try {
-
-    const page = parseInt(req.query.page) || 1;     
-    const limit = parseInt(req.query.limit) || 10;    
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
     const { count, rows } = await Patrimonio.findAndCountAll({
@@ -254,12 +253,23 @@ const getAllPatrimoniosAdmin = async (req, res) => {
       offset: offset
     });
 
+    // --- NUEVO: obtener conteos globales por estado ---
+    const totalCount = await Patrimonio.count();
+    const pendientesCount = await Patrimonio.count({ where: { estado: 'pendiente' } });
+    const registradosCount = await Patrimonio.count({ where: { estado: 'registrado' } });
+
     return res.status(200).json({
       patrimonios: rows,
       totalItems: count,
       totalPages: Math.ceil(count / limit),
       currentPage: page,
-      limit: limit
+      limit: limit,
+      // --- NUEVO campo 'totales' ---
+      totales: {
+        total: totalCount,
+        pendientes: pendientesCount,
+        registrados: registradosCount
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
