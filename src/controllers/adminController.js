@@ -234,6 +234,19 @@ const deletePatrimonio = async (req, res) => {
   }
 };
 
+
+const getMetricasPatrimonios = async (req, res) => {
+  try {
+    const total = await Patrimonio.count();
+    const pendientes = await Patrimonio.count({ where: { estado: 'pendiente' } });
+    const registrados = await Patrimonio.count({ where: { estado: 'registrado' } });
+    return res.status(200).json({ total, pendientes, registrados });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
 const getAllPatrimoniosAdmin = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -253,23 +266,12 @@ const getAllPatrimoniosAdmin = async (req, res) => {
       offset: offset
     });
 
-    // --- NUEVO: obtener conteos globales por estado ---
-    const totalCount = await Patrimonio.count();
-    const pendientesCount = await Patrimonio.count({ where: { estado: 'pendiente' } });
-    const registradosCount = await Patrimonio.count({ where: { estado: 'registrado' } });
-
     return res.status(200).json({
       patrimonios: rows,
       totalItems: count,
       totalPages: Math.ceil(count / limit),
       currentPage: page,
-      limit: limit,
-      // --- NUEVO campo 'totales' ---
-      totales: {
-        total: totalCount,
-        pendientes: pendientesCount,
-        registrados: registradosCount
-      }
+      limit: limit
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -401,6 +403,7 @@ module.exports = {
   updatePatrimonio,
   deletePatrimonio,
   exportarPatrimonios,
+  getMetricasPatrimonios,
   getAllPatrimoniosAdmin,
   cambiarEstadoPatrimonio
 };

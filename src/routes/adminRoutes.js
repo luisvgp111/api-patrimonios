@@ -8,6 +8,7 @@ const upload = require("../middlewares/upload");
 router.use(auth, isAdmin);
 
 router.get("/patrimonios", adminController.getAllPatrimoniosAdmin);
+router.get("/metricas", adminController.getMetricasPatrimonios);
 router.patch("/patrimonios/:id/estado", isSupremo, adminController.cambiarEstadoPatrimonio);
 router.get("/exportar-excel", adminController.exportarPatrimonios);
 router.post(
