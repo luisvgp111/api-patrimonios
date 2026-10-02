@@ -161,6 +161,7 @@ const getPatrimonioParaReporte = async (req, res) => {
         lng: patrimonio.longitud,
       },
       municipio: patrimonio.municipio ? patrimonio.municipio.nombre : "N/A",
+      localidad: patrimonio.localidad || null,
       tags: patrimonio.tags.map((t) => t.nombre),
       links: patrimonio.links.map(l => ({ titulo: l.titulo, url: l.url })),
       portada: `${baseUrl}${patrimonio.imagen_url}`,

@@ -25,6 +25,10 @@ const Patrimonio = sequelize.define('Patrimonio', {
             notNull: { msg: "Debes agregar un municipio" }
         }
     },
+    localidad: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
     estado: {
         type: DataTypes.ENUM('pendiente', 'registrado'),
         defaultValue: 'pendiente',

@@ -253,7 +253,8 @@ const getAllPatrimoniosAdmin = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    const { count, rows } = await Patrimonio.findAndCountAll({
+    const [{ count, rows }, localidadRows] = await Promise.all([
+      Patrimonio.findAndCountAll({
       include: [
         { model: Municipio, as: "municipio" },
         { model: Tag, as: "tags", through: { attributes: [] } },
@@ -264,10 +265,23 @@ const getAllPatrimoniosAdmin = async (req, res) => {
       order: [["nombre", "ASC"]],
       limit: limit,
       offset: offset
-    });
+      }),
+      Patrimonio.findAll({
+        attributes: ["localidad"],
+        where: { localidad: { [Op.not]: null } },
+        group: ["localidad"],
+        raw: true,
+      }),
+    ]);
+
+    const localidades = [...new Set(localidadRows
+      .map(({ localidad }) => typeof localidad === "string" ? localidad.trim() : "")
+      .filter((localidad) => localidad && !["null", "undefined"].includes(localidad.toLowerCase())))
+    ].sort((a, b) => a.localeCompare(b, "es", { sensitivity: "base" }));
 
     return res.status(200).json({
       patrimonios: rows,
+      localidades,
       totalItems: count,
       totalPages: Math.ceil(count / limit),
       currentPage: page,
