@@ -156,6 +156,7 @@ const getPatrimonioParaReporte = async (req, res) => {
       nombre: patrimonio.nombre,
       categoria: patrimonio.categoria,
       descripcion: patrimonio.descripcion,
+      referencias: patrimonio.referencias || [],
       coordenadas: {
         lat: patrimonio.latitud,
         lng: patrimonio.longitud,

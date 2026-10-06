@@ -15,6 +15,33 @@ const Patrimonio = sequelize.define('Patrimonio', {
         type: DataTypes.TEXT,
         allowNull: false
     },
+    referencias: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        get() {
+            const storedValue = this.getDataValue('referencias');
+            if (typeof storedValue !== 'string' || !storedValue.trim()) return [];
+
+            try {
+                const parsedValue = JSON.parse(storedValue);
+                if (Array.isArray(parsedValue)) return parsedValue;
+            } catch {
+                // Older values are newline-separated URLs.
+            }
+
+            return storedValue
+                .split(/\r?\n/)
+                .map((url) => url.trim())
+                .filter(Boolean)
+                .map((url) => ({ titulo: '', autorInstitucion: '', url }));
+        },
+        set(value) {
+            this.setDataValue(
+                'referencias',
+                Array.isArray(value) ? JSON.stringify(value) : value
+            );
+        }
+    },
     imagen_url: {
         type: DataTypes.STRING
     },

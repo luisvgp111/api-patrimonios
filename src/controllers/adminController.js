@@ -5,10 +5,64 @@ const fs = require('fs/promises');
 const fsSync = require('fs');   
 const ExcelJS = require("exceljs");
 
+const parseReferencias = (value) => {
+  let referencias = value;
+  if (typeof referencias === "string") {
+    try {
+      referencias = JSON.parse(referencias);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(referencias)) return null;
+
+  const normalized = [];
+  for (const referencia of referencias) {
+    if (!referencia || typeof referencia !== "object" || Array.isArray(referencia)) {
+      return null;
+    }
+    const { titulo, autorInstitucion, url } = referencia;
+    if (
+      typeof titulo !== "string" ||
+      (autorInstitucion !== undefined && typeof autorInstitucion !== "string") ||
+      typeof url !== "string"
+    ) {
+      return null;
+    }
+    normalized.push({
+      titulo: titulo.trim(),
+      autorInstitucion: (autorInstitucion || "").trim(),
+      url: url.trim(),
+    });
+  }
+  return normalized;
+};
+
+const isAllowedReferenceUrl = (value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 //Controller de la gestion de patrimonios para administradores.
 const createPatrimonio = async (req, res) => {
   try {
-    let { tags, ubicaciones, links, ...datos } = req.body;
+    let { tags, ubicaciones, links, referencias, ...datos } = req.body;
+    const referenciasEstructuradas = parseReferencias(referencias ?? []);
+    if (
+      !referenciasEstructuradas ||
+      referenciasEstructuradas.some(
+        ({ titulo, url }) => !titulo || !isAllowedReferenceUrl(url),
+      )
+    ) {
+      return res.status(400).json({
+        error: "Cada referencia debe incluir título y una URL http o https válida",
+      });
+    }
+    datos.referencias = JSON.stringify(referenciasEstructuradas);
 
     datos.estado = 'pendiente';
 
@@ -88,10 +142,44 @@ const updatePatrimonio = async (req, res) => {
     let body = req.body;
     if (body["0"] && typeof body["0"] === "object") body = body["0"];
 
-    let { tags, eliminarImagenesIds, ubicaciones, links, ...datos } = body;
+    let { tags, eliminarImagenesIds, ubicaciones, links, referencias, ...datos } = body;
 
     const patrimonio = await Patrimonio.findByPk(id);
     if (!patrimonio) return res.status(404).json({ error: "Patrimonio no encontrado" });
+
+    if (referencias !== undefined) {
+      const referenciasEstructuradas = parseReferencias(referencias);
+      const referenciasActuales = patrimonio.referencias;
+      if (!referenciasEstructuradas) {
+        return res.status(400).json({
+          error: "Las referencias deben enviarse como una lista estructurada",
+        });
+      }
+      const contieneReferenciaInvalida = referenciasEstructuradas.some(
+        ({ titulo, autorInstitucion, url }) => {
+          const referenciaLegacySinCambios =
+            !titulo &&
+            !autorInstitucion &&
+            referenciasActuales.some(
+              (actual) =>
+                !actual.titulo &&
+                !actual.autorInstitucion &&
+                actual.url === url,
+            );
+          return (
+            (!titulo && !referenciaLegacySinCambios) ||
+            !url ||
+            (!isAllowedReferenceUrl(url) && !referenciaLegacySinCambios)
+          );
+        },
+      );
+      if (contieneReferenciaInvalida) {
+        return res.status(400).json({
+          error: "Cada referencia nueva debe incluir título y una URL http o https válida",
+        });
+      }
+      datos.referencias = JSON.stringify(referenciasEstructuradas);
+    }
 
     if (req.usuario.rol !== 'admin_supremo') delete datos.estado;
 
