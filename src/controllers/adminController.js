@@ -38,6 +38,22 @@ const parseReferencias = (value) => {
   return normalized;
 };
 
+const parseAutores = (value) => {
+  let autores = value;
+  if (autores == null) return [];
+  if (typeof autores === "string") {
+    try {
+      autores = JSON.parse(autores);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(autores) || autores.some((autor) => typeof autor !== "string")) {
+    return null;
+  }
+  return autores.map((autor) => autor.trim()).filter(Boolean);
+};
+
 const isAllowedReferenceUrl = (value) => {
   try {
     const url = new URL(value);
@@ -50,8 +66,9 @@ const isAllowedReferenceUrl = (value) => {
 //Controller de la gestion de patrimonios para administradores.
 const createPatrimonio = async (req, res) => {
   try {
-    let { tags, ubicaciones, links, referencias, ...datos } = req.body;
+    let { tags, ubicaciones, links, referencias, autores, ...datos } = req.body;
     const referenciasEstructuradas = parseReferencias(referencias ?? []);
+    const autoresNormalizados = parseAutores(autores ?? []);
     if (
       !referenciasEstructuradas ||
       referenciasEstructuradas.some(
@@ -62,7 +79,13 @@ const createPatrimonio = async (req, res) => {
         error: "Cada referencia debe incluir título y una URL http o https válida",
       });
     }
+    if (!autoresNormalizados) {
+      return res.status(400).json({
+        error: "Los autores deben enviarse como una lista de nombres",
+      });
+    }
     datos.referencias = JSON.stringify(referenciasEstructuradas);
+    datos.autores = autoresNormalizados;
 
     datos.estado = 'pendiente';
 
@@ -142,7 +165,7 @@ const updatePatrimonio = async (req, res) => {
     let body = req.body;
     if (body["0"] && typeof body["0"] === "object") body = body["0"];
 
-    let { tags, eliminarImagenesIds, ubicaciones, links, referencias, ...datos } = body;
+    let { tags, eliminarImagenesIds, ubicaciones, links, referencias, autores, ...datos } = body;
 
     const patrimonio = await Patrimonio.findByPk(id);
     if (!patrimonio) return res.status(404).json({ error: "Patrimonio no encontrado" });
@@ -179,6 +202,16 @@ const updatePatrimonio = async (req, res) => {
         });
       }
       datos.referencias = JSON.stringify(referenciasEstructuradas);
+    }
+
+    if (autores !== undefined) {
+      const autoresNormalizados = parseAutores(autores);
+      if (!autoresNormalizados) {
+        return res.status(400).json({
+          error: "Los autores deben enviarse como una lista de nombres",
+        });
+      }
+      datos.autores = autoresNormalizados;
     }
 
     if (req.usuario.rol !== 'admin_supremo') delete datos.estado;
@@ -219,6 +252,7 @@ const updatePatrimonio = async (req, res) => {
         tagsArray = tags ? tags.split(",").map(t => t.trim()).filter(t => t) : [];
       } else if (Array.isArray(tags)) {
         tagsArray = tags.map(t => {
+
           if (typeof t === "string") return t.trim();
           if (t && typeof t === "object" && t.nombre) return t.nombre.trim();
           return null;

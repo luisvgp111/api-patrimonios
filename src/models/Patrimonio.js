@@ -42,6 +42,38 @@ const Patrimonio = sequelize.define('Patrimonio', {
             );
         }
     },
+    autores: {
+        type: DataTypes.TEXT,
+        allowNull: false,
+        defaultValue: '[]',
+        get() {
+            const storedValue = this.getDataValue('autores');
+            if (typeof storedValue !== 'string' || !storedValue.trim()) return [];
+
+            try {
+                const parsedValue = JSON.parse(storedValue);
+                if (Array.isArray(parsedValue)) {
+                    return parsedValue
+                        .filter((autor) => typeof autor === 'string')
+                        .map((autor) => autor.trim())
+                        .filter(Boolean);
+                }
+            } catch {
+                return [];
+            }
+
+            return [];
+        },
+        set(value) {
+            const autores = Array.isArray(value)
+                ? value
+                    .filter((autor) => typeof autor === 'string')
+                    .map((autor) => autor.trim())
+                    .filter(Boolean)
+                : [];
+            this.setDataValue('autores', JSON.stringify(autores));
+        }
+    },
     imagen_url: {
         type: DataTypes.STRING
     },
