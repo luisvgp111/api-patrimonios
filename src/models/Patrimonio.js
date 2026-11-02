@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const sequelize = require('../db');
+const IDIOMAS_INDIGENAS = require('../constants/idiomasIndigenas');
 
 const Patrimonio = sequelize.define('Patrimonio', {
     nombre: {
@@ -14,6 +15,21 @@ const Patrimonio = sequelize.define('Patrimonio', {
     descripcion: {
         type: DataTypes.TEXT,
         allowNull: false
+    },
+    descripcion_en: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    descripcion_indigena: {
+        type: DataTypes.TEXT,
+        allowNull: true
+    },
+    idioma_indigena: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        validate: {
+            isIn: [IDIOMAS_INDIGENAS]
+        }
     },
     referencias: {
         type: DataTypes.TEXT,

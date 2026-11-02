@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require('fs/promises');
 const fsSync = require('fs');   
 const ExcelJS = require("exceljs");
+const normalizarDescripcionesMultilingues = require("../utils/descripcionesMultilingues");
 
 const parseReferencias = (value) => {
   let referencias = value;
@@ -67,6 +68,10 @@ const isAllowedReferenceUrl = (value) => {
 const createPatrimonio = async (req, res) => {
   try {
     let { tags, ubicaciones, links, referencias, autores, ...datos } = req.body;
+    const errorDescripciones = normalizarDescripcionesMultilingues(datos);
+    if (errorDescripciones) {
+      return res.status(400).json({ error: errorDescripciones });
+    }
     const referenciasEstructuradas = parseReferencias(referencias ?? []);
     const autoresNormalizados = parseAutores(autores ?? []);
     if (
@@ -166,9 +171,37 @@ const updatePatrimonio = async (req, res) => {
     if (body["0"] && typeof body["0"] === "object") body = body["0"];
 
     let { tags, eliminarImagenesIds, ubicaciones, links, referencias, autores, ...datos } = body;
+    const camposDescripcionesEnviados = [
+      "descripcion_en",
+      "descripcion_indigena",
+      "idioma_indigena",
+    ].filter((campo) => Object.prototype.hasOwnProperty.call(datos, campo));
 
     const patrimonio = await Patrimonio.findByPk(id);
     if (!patrimonio) return res.status(404).json({ error: "Patrimonio no encontrado" });
+
+    const descripcionesEfectivas = {
+      descripcion_en: Object.prototype.hasOwnProperty.call(datos, "descripcion_en")
+        ? datos.descripcion_en
+        : patrimonio.descripcion_en,
+      descripcion_indigena: Object.prototype.hasOwnProperty.call(
+        datos,
+        "descripcion_indigena",
+      )
+        ? datos.descripcion_indigena
+        : patrimonio.descripcion_indigena,
+      idioma_indigena: Object.prototype.hasOwnProperty.call(datos, "idioma_indigena")
+        ? datos.idioma_indigena
+        : patrimonio.idioma_indigena,
+    };
+    const errorDescripciones =
+      normalizarDescripcionesMultilingues(descripcionesEfectivas);
+    if (errorDescripciones) {
+      return res.status(400).json({ error: errorDescripciones });
+    }
+    camposDescripcionesEnviados.forEach((campo) => {
+      datos[campo] = descripcionesEfectivas[campo];
+    });
 
     if (referencias !== undefined) {
       const referenciasEstructuradas = parseReferencias(referencias);
